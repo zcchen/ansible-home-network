@@ -1,0 +1,8 @@
+---
+
+- name: "Restart app <{{ docker_compose_app__name }}>"
+  ansible.builtin.systemd:
+    daemon_reload: true
+    name: "docker-compose-app@{{ docker_compose_app__name }}"
+    state: restarted
+  when: docker_compose_app__service_restart

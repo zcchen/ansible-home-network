@@ -1,0 +1,11 @@
+{% for item in v %}
+- protocol: vless
+  settings:
+    clients: {{ __xray_snippet__passwords.values() | map('community.general.dict_kv', 'id') | list }}
+    decryption: "none"
+    fallbacks:
+      - dest: 443
+  listen: {{ item.addr | default('127.0.0.1') }}
+  port: {{ item.port }}
+  streamSettings: {{ _xray_snippet__streamSettings_base | combine({"security": "none"}, item.streamSettings | default({}), recursive=True) }}
+{% endfor %}

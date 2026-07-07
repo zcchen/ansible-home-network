@@ -1,0 +1,7 @@
+{% if item.value.keys() | length > 0 %}
+[{{ item.key }}]
+{%   for key, value in item.value.items() %}
+{{ key }} = {{ value }}
+{%   endfor %}
+{% endif %}
+

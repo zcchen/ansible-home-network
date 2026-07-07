@@ -1,0 +1,18 @@
+---
+
+openwrt__crons_keeps:
+  - wireguard-watchdog
+
+openwrt__extra_vlans:
+  - vlan_id: 1000
+    interface: lan_iot
+    network:
+      ipaddr: 192.168.100.1
+      netmask: 255.255.255.0
+      proto: static
+  - vlan_id: 1001
+    interface: lan_guest
+    network:
+      ipaddr: 192.168.101.1
+      netmask: 255.255.255.0
+      proto: static

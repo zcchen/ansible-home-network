@@ -1,0 +1,73 @@
+---
+
+frp__version: 0.52.0    # The first version support `.toml` config file, and `.ini` config file will be deprecated in future.
+frp__is_server: false
+frp__port_tcp: 7000
+frp__port_udp: 7001
+frp__protocol: tcp
+
+frp__auth: {}
+frp__auth_default:
+  method: token
+  token:  ""
+
+frp__webServer: {}
+frp__webServer_default:
+  addr: 127.0.0.1
+  port: 7500
+  user: admin
+  password: admin
+
+frp__server: {}
+frp__server_default:
+  # auth
+  auth: "{{ frp__auth_default | combine(frp__auth) }}"
+  # default port defined
+  bindAddr: 0.0.0.0
+  bindPort: "{{ frp__port_tcp }}"
+  kcpBindPort: "{{ frp__port_tcp }}"
+  vhostHTTPPort: "{{ frp__port_tcp }}"
+  vhostHTTPSPort: "{{ frp__port_tcp }}"
+  quicBindPort: "{{ frp__port_udp }}"
+  # default dashboard defined
+  webServer: "{{ frp__webServer_default | combine(frp__webServer) }}"
+  # default performance define
+  transport:
+    maxPoolCount: 32
+
+frp__clients: []
+frp__client_default:
+  auth: "{{ frp__auth_default | combine(frp__auth) }}"
+  serverAddr: ""     # raise error if server_addr is missing
+  serverPort: "{{ frp__port_tcp }}"
+  transport:
+    protocol: "{{ frp__protocol }}"
+
+frp__services: {}
+# example_ssh:
+#   type: tcp
+#   localIp: 127.0.0.1
+#   localPort: 22
+#   remote_port: 22222
+#   transport:
+#     useCompression: True
+# example_https:
+#   type: https
+#   localIp: 127.0.0.1
+#   localPort: 443
+#   subdomain: example
+#   transport:
+#     useCompression: True
+#     useEncryption: True
+frp__services_default:
+  transport:
+    useCompression: True
+    # useEncryption: True
+
+frp__server_cmd: frps
+frp__client_cmd: frpc
+
+frp__server_version_cmd: "{{ frp__server_cmd }} --version"
+frp__client_version_cmd: "{{ frp__client_cmd }} --version"
+
+frp__client_argv_foreground: ""

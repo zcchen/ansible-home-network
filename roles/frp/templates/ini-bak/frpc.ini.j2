@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+
+[common]
+{% for key, value in client_item.items() %}
+{{ key }} = {{ value }}
+{% endfor %}
+
+{% if frp__client_conf_as_single_file %}
+{%   for key, value in _frp__services.items() %}
+[{{ key }}]
+{%     for k, v in value.items() %}
+{{ k }} = {{ v }}
+{%     endfor %}
+
+{%   endfor %}
+{% else %}
+includes = /etc/frpc/config/*.ini
+{% endif %}

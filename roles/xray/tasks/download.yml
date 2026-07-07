@@ -1,0 +1,67 @@
+---
+
+- name: "Check system machine is amd64?"
+  ansible.builtin.set_fact:
+    _xray__arch: "64"
+  when: ansible_architecture == "x86_64"
+- name: "Check system machine is i386"
+  ansible.builtin.set_fact:
+    _xray__arch: "32"
+  when: ansible_architecture == "386"
+- name: "Check system machine is aarch64"
+  ansible.builtin.set_fact:
+    _xray__arch: "arm64"
+  when: ansible_architecture == "aarch64"
+- name: "Ensure the system machine is {{ ansible_architecture }}"
+  ansible.builtin.set_fact:
+    _xray__arch: "{{ ansible_architecture }}"
+  when:
+    - not ansible_architecture == "x86_64"
+    - not ansible_architecture == "i386"
+    - not ansible_architecture == "aarch64"
+
+- name: "Remove /tmp/Xray-linux-{{ _xray__arch }}-{{ xray__version }}.zip because of forcing-reinstall"
+  ansible.builtin.file:
+    path: "/tmp/Xray-linux-{{ _xray__arch }}-{{ xray__version }}.zip"
+    state: absent
+  when: xray__force_reinstall
+
+- name: "Check if /tmp/Xray-linux-{{ _xray__arch }}-{{ xray__version }}.zip downloaded"
+  stat:
+    path: "/tmp/Xray-linux-{{ _xray__arch }}-{{ xray__version }}.zip"
+  register: _xray_download_state
+
+- name: download xray from release
+  when: not _xray_download_state.stat.exists
+  ansible.builtin.get_url:
+    url: https://github.com/XTLS/Xray-core/releases/download/v{{ xray__version }}/Xray-linux-{{ _xray__arch }}.zip
+    dest: "/tmp/Xray-linux-{{ _xray__arch }}-{{ xray__version }}.zip"
+  environment: "{{ proxy_env if xray__download_proxy else {} }}"
+  vars:
+    proxy_env:
+      http_proxy: "{{ xray__download_proxy }}"
+      https_proxy: "{{ xray__download_proxy }}"
+  register: _xray__download_result
+  until: _xray__download_result is success
+  retries: 10
+  delay: 5
+
+- name: Install unzip and gtar zipinfo
+  ansible.builtin.apt:
+    name:
+      - zstd
+      - unzip
+    state: present
+    update_cache: yes
+
+- name: prepare the xray unarchive dir
+  ansible.builtin.file:
+    path: "/tmp/xray/"
+    state: directory
+    mode: '0755'
+
+- name: "Unarchive the file </tmp/Xray-linux-{{ _xray__arch }}-{{ xray__version }}.zip>"
+  ansible.builtin.unarchive:
+    src: "/tmp/Xray-linux-{{ _xray__arch }}-{{ xray__version }}.zip"
+    dest: /tmp/xray/
+    remote_src: true

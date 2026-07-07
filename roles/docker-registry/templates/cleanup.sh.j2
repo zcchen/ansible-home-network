@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+sleep 10
+
+{% for key in _registry__domain.ports.keys() %}
+/registry.py -r http://registry-offical_{{ key }}:5000 \
+  --no-validate-ssl --delete --num 10 \
+  --keep-by-hours {{ (_registry__clean.images_keep_days * 24) | int }}
+{% endfor %}
+
+sleep 3550

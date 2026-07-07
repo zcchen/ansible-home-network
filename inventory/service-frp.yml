@@ -1,0 +1,39 @@
+---
+
+frp:
+  children:
+    frps:
+      hosts:
+        vps.A:
+        vps.B:
+    frpc:
+      hosts:
+        router.A.lan:
+        router.B.lan:
+  vars:
+    frp__port_tcp: "{{ __frp__port_tcp | default(7000) }}"
+    frp__port_udp: "{{ __frp__port_udp | default(7001) }}"
+    frp__auth: "{{ __frp__auth }}"
+    frp__protocol: kcp
+
+frps:
+  vars:
+    frp__is_server: true
+    frp__server_force_resatrt: false
+    frp__server:
+      subDomainHost: localhost
+    frp__webServer: "{{ __frp__webServer }}"
+
+frpc:
+  vars:
+    frp__clients:
+      - serverAddr: "{{ __network.vps.A.baseAddr }}"
+      - serverAddr: "{{ __network.vps.B.baseAddr }}"
+  hosts:
+    router.A.lan:
+      # frp__client_cmd: xfrpc
+      # frp__client_version_cmd: "{{ frp__client_cmd }} -v | awk '{print $2}' "
+      # frp__client_conf_as_single_file: true
+      frp__services: "{{ __frp__services.router_A }}"
+    router.B.lan:
+      frp__services: "{{ __frp__services.router_B }}"

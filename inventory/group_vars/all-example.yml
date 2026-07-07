@@ -1,0 +1,108 @@
+---
+
+ansible_connection: ssh
+# ansible_ssh_common_args: "-4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=100"
+ansible_ssh_common_args: "-4 -o ServerAliveInterval=100"
+ansible_ssh_args: "-C"
+ansible_scp_extra_args: "-O"
+
+__domain_basename: example.com
+
+__login_router_ssh_user: root
+__login_router_ssh_passwd: example-passwd
+__login_vps_ssh_user: root
+__login_vps_ssh_passwd: "{{ __login_router_ssh_passwd }}"
+
+__network:
+  router:
+    A:
+      baseAddr: 192.168.5.1/24
+      wireguard: 172.16.0.200/24
+    B:
+      baseAddr: 192.168.6.1/24
+      wireguard: 172.16.0.201/24
+  vps:
+    A:
+      baseAddr: "vpsA.port.{{ __domain_basename }}"
+      wireguard: 172.16.0.10/24
+    B:
+      baseAddr: "vpsB.port.{{ __domain_basename }}"
+      wireguard: 172.16.0.11/24
+
+__ddns:
+  router:
+    A: routerA.ipv6.ddns
+    B: routerB.ipv6.ddns
+
+__frp:
+  router:
+    A:
+      addr: "routerA.vpsA.frp.{{ __domain_basename }}"
+      port: 22222
+    B:
+      addr: "routerB.vpsB.frp.{{ __domain_basename }}"
+      port: 22223
+  vps:
+    A:
+      prefix: vpsA
+    B:
+      prefix: vpsB
+
+__ddns__service_name: your_dns_service_name-on-openwrt-ddns
+__ddns__service_username: your-dns-service-passswd-or-token_e.g.:Bearer
+__ddns__service_password: your-dns-service-passswd-or-token
+__dhcp__static_clients:
+  example:
+    ip: 192.168.5.10
+    mac: "FF:EE:DD:CC:BB:01"
+
+__certbot__dns_plugin: your_dns_service_name
+__certbot__dns_api_token: your-dns-service-passswd-or-token
+
+__frp__port_tcp: 7000
+__frp__port_udp: 7001
+__frp__auth:
+  token:  "yourFRPtoken-or-password"
+__frp__webServer:
+  user: admin
+  password: your_frp_dashboard-password
+__frp__services:
+  router_A:
+    ssh_router_A:
+      type: tcp
+      localIp: 127.0.0.1
+      localPort: 22
+      remotePort: 22222
+    https_router_A:
+      type: https
+      localIp: 127.0.0.1
+      localPort: 443
+      subdomain: router
+  router_B:
+
+__web__docker_registry_secret: "your-docker-regostry-secrect"
+__dns__configs:
+  router:
+    basedomain.conf:
+      # disable all ipv6 return, except the ddns ones, which will query from upstream
+      - "address=/{{ __domain_basename }}/::"
+      - "server=/ddns.{{ __domain_basename }}/#"
+    docker.conf:
+      - "server=/docker.{{ __domain_basename }}/{{ __network.vps.A.wireguard | ansible.utils.ipaddr('address') }}"
+      - "server=/docker.{{ __domain_basename }}/{{ __network.vps.B.wireguard | ansible.utils.ipaddr('address') }}"
+  port:
+    localhost.conf:
+      # for frp services
+      - address=/.localhost/127.0.0.1
+    docker.conf:
+      - "address=/docker.{{ __domain_basename }}/{{ ansible_wg0.ipv4.address }}"
+      - "address=/docker.{{ __domain_basename }}/::"
+
+__xray_snippet__passwords:
+  ansible: yourxray-password-for-ansible-config
+  wireguard: yourxray-password-for-wireguard-plugin
+
+__wireguard__predefined_peers:
+  - description: "your-predefined-peer"
+    private_key:  "<your-wg-prikey, generate by `wg genkey` command>"
+    address: 172.16.0.100/24

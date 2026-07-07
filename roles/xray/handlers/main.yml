@@ -1,0 +1,58 @@
+---
+
+# test xray config
+- name: Test xray
+  ansible.builtin.command: "xray run -test -c {{ item.dest }}"
+  loop: "{{ _xray__configs_output.results }}"
+  when: item.changed
+  loop_control:
+    label: "{{ item.dest }}"
+  ignore_errors: "{{ xray__ignore_configs_error }}"
+  listen: "Test xray"
+  notify:
+    - Restart xray
+
+# restart xray single service
+- name: Restart xray (systemd)
+  ansible.builtin.systemd_service:
+    name: "xray@{{ item.dest | basename | splitext | first }}"
+    state: restarted
+  loop: "{{ _xray__configs_output.results }}"
+  when:
+    - item.changed
+    - ansible_service_mgr == 'systemd'
+  loop_control:
+    label: "{{ item.dest | basename }}"
+  listen: "Restart xray"
+
+- name: Restart xray (initV)
+  when: ansible_service_mgr != 'systemd'
+  ansible.builtin.service:
+    name: xray
+    state: restarted
+  listen: "Restart xray"
+
+# restart all xray services
+- name: Restart all xray (systemd)
+  when: ansible_service_mgr == 'systemd'
+  ansible.builtin.systemd_service:
+    name: "xray@{{ item.key }}"
+    state: restarted
+  with_dict: "{{ _xray__configs }}"
+  loop_control:
+    label: "{{ item.key }}"
+  listen: "Restart all xray"
+
+- name: Restart all xray (initV)
+  when: ansible_service_mgr != 'systemd'
+  ansible.builtin.service:
+    name: xray
+    state: restarted
+  listen: "Restart all xray"
+
+# restart cron which is for xray plugin
+- name: Restart cron
+  ansible.builtin.service:
+    name: cron
+    state: restarted
+

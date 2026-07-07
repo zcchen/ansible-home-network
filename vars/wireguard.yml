@@ -1,0 +1,6 @@
+---
+
+wireguard__port: 51820
+wireguard__interface: wg0
+wireguard__persistent_keepalive: 30
+wireguard__predefined_peers: "{{ __wireguard__predefined_peers }}"

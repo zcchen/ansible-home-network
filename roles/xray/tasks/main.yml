@@ -1,0 +1,62 @@
+---
+
+- include_tasks: check-command.yml
+  vars:
+    bin: xray
+    _failed_if_binary_not_found: "{{ ansible_service_mgr != 'systemd' }}"
+
+- name: Install the xray
+  when:
+    - _xray__binary_path == "" or xray__force_reinstall or _xray__version != xray__version
+    - ansible_service_mgr == 'systemd'
+  block:
+  - import_tasks: install.yml
+    vars:
+      stop_if_missing: "{{ ansible_facts['os_family'] == 'OpenWrt' }}"
+  - include_tasks: check-command.yml
+    vars:
+      bin: xray
+      _failed_if_binary_not_found: true
+
+- name: Post xray installed
+  when: ansible_service_mgr == 'systemd'
+  block:
+    - name: update the service file
+      ansible.builtin.template:
+        src: xray@.service.j2
+        dest: /usr/local/lib/systemd/system/xray@.service
+        mode: '0644'
+      notify:
+        - Restart all xray
+    - name: Update /etc/sysctl.conf
+      ansible.builtin.blockinfile:
+        path: /etc/sysctl.conf
+        block: |
+          net.ipv4.tcp_fastopen = 3
+          net.core.default_qdisc = fq
+          net.ipv4.tcp_congestion_control = bbr
+          net.core.rmem_max = 134217728
+          net.core.wmem_max = 134217728
+          net.ipv4.tcp_rmem = 4096 16384 134217728
+          net.ipv4.tcp_wmem = 4096 65536 134217728
+        state: present
+        create: true
+        mode: '0644'
+      register: _sysctl__update
+    - name: Trigger `sysctl -p --system`
+      ansible.builtin.shell: sysctl -p --system
+      when: _sysctl__update.changed
+
+- import_tasks: config.yml
+
+- name: combine vars to _xray__plugins
+  ansible.builtin.set_fact:
+    _xray__plugins: "{{ xray__plugins_default | combine(xray__plugins, recursive=True, list_merge='append') }}"
+
+- name: Flush the handlers, especially when restart trigger required.
+  ansible.builtin.meta: flush_handlers
+  when: _xray__plugins.geodata.enable
+
+- import_tasks: plugin-geodata.yml
+  when: _xray__plugins.geodata.enable
+

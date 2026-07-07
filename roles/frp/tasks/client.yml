@@ -1,0 +1,95 @@
+---
+
+- name: Prepare the frpc services directory
+  ansible.builtin.file:
+    path: "/etc/frpc/config/"
+    state: directory
+    mode: '0755'
+
+- name: "generate config /etc/frpc/*.toml"
+  ansible.builtin.template:
+    src: "frp.toml.j2"
+    dest: "/etc/frpc/{{ value.serverAddr }}.toml"
+    mode: '0644'
+  failed_when:
+    - not value.serverAddr or not value.serverPort
+  with_items: "{{ frp__clients | default([]) }}"
+  loop_control:
+    label: "{{ {'addr': value.serverAddr, 'port': value.serverPort, 'transport': value.transport} }}"
+  vars:
+    client: "{{ frp__client_default | combine(item, {'includes': ['/etc/frpc/config/*.toml']}, recursive=True) }}"
+    value: "{{ client }}"
+  notify:
+    - Restart frpc
+
+- name: "generate service config /etc/frpc/config/<service>.toml"
+  ansible.builtin.template:
+    src: "frp-include.toml.j2"
+    dest: "/etc/frpc/config/{{ k }}.toml"
+    mode: '0644'
+  with_dict: "{{ frp__services | default({}) }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    value: "{{ frp__services_default | combine({'name': k}, v) }}"
+    type: "proxies"
+  notify:
+    - Restart frpc
+
+- name: Setup the frpc@.services
+  when: ansible_service_mgr == 'systemd'
+  block:
+  - name: generate <frpc@.service> file to </etc/systemd/system/> folder
+    ansible.builtin.template:
+      src: frpc@.service.j2
+      dest: /etc/systemd/system/frpc@.service
+      owner: root
+      group: root
+      mode: '0644'
+    notify:
+      - Restart frpc
+  - name: setup frpc@.service
+    ansible.builtin.systemd:
+      daemon_reload: yes
+      name: "frpc@{{ item.serverAddr }}"
+      enabled: yes
+    with_items: "{{ _frp__clients }}"
+    loop_control:
+      label: "{{ {'addr': item.serverAddr, 'port': item.serverPort, 'transport': item.transport} }}"
+    failed_when:
+      - not item.serverAddr
+    notify:
+      - Restart frpc
+
+- name: "Setup the /etc/init.d/{{ frp__client_cmd }} for OpenWrt"
+  when: ansible_service_mgr != 'systemd'
+  block:
+  - name: generate <frpc> file to </etc/init.d/> folder
+    ansible.builtin.template:
+      src: frpc-openwrt.j2
+      dest: "/etc/init.d/{{ frp__client_cmd }}"
+      owner: root
+      group: root
+      mode: '0755'
+    notify:
+      - Restart frpc
+    register: frpc_service_file
+  - name: Kill all the previous frpc processes
+    when: frpc_service_file is changed
+    block:
+    - name: disable and stop the previous service
+      ansible.builtin.service:
+        name: "{{ frp__client_cmd }}"
+        state: stopped
+        enabled: false
+    - name: kill the previous process
+      # ansible.builtin.shell: "kill `ps | grep frpc | grep -v grep | awk '{print $1}'`"
+      ansible.builtin.shell: "killall {{ frp__client_cmd }}"
+      changed_when: false
+      failed_when: false
+  - name: "Enable the /etc/init.d/{{ frp__client_cmd }} service"
+    ansible.builtin.service:
+      name: "{{ frp__client_cmd }}"
+      enabled: true
+    notify:
+      - Restart frpc

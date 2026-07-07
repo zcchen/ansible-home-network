@@ -1,0 +1,47 @@
+---
+
+- include_tasks: download.yml
+
+- name: prepare the directories for xray
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - /usr/local/bin/
+    - /usr/local/share/xray/
+    - /usr/local/lib/systemd/system/
+    - /etc/xray/
+
+- name: Stop current xray@.service templated service
+  block:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Stop running xray@ services
+      ansible.builtin.service:
+        name: "{{ item.key }}"
+        state: stopped
+      loop: "{{ ansible_facts.services | dict2items }}"
+      when:
+        - item.key is match('xray@.*')
+        - item.value.state == 'running'
+
+- name: install the xray binaries
+  ansible.builtin.copy:
+    src: /tmp/xray/xray
+    dest: /usr/local/bin/xray
+    mode: '0755'
+    remote_src: true
+
+- name: install the xray resources
+  ansible.builtin.copy:
+    src: "/tmp/xray/{{ item }}"
+    dest: /usr/local/share/xray/
+    mode: '0644'
+    remote_src: true
+  loop:
+    - geoip.dat
+    - geosite.dat

@@ -1,0 +1,12 @@
+balancers:
+  - tag: "leastPing-proxy-balancer"
+    selector: {{ [tag_out_base] | product(tag_suf_list) | map('join', '-')}}
+    strategy:
+      type: leastPing
+rules:
+  - inboundTag: {{ tag_in_list }}
+    balancerTag: "leastPing-proxy-balancer"
+{% for suf in tag_suf_list %}
+  - inboundtag: {{ tag_in_list | product([suf]) | map('join', '-') }}
+    outboundtag: "{{ tag_out_base }}-{{ suf }}"
+{% endfor %}

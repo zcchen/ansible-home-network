@@ -1,0 +1,6 @@
+---
+
+ansible_ssh_host: "{{ __network.vps.A.baseAddr }}"
+ansible_ssh_user: "{{ __login_vps_ssh_user }}"
+ansible_ssh_pass: "{{ __login_vps_ssh_passwd }}"
+ansible_sudo_pass: "{{ ansible_ssh_pass }}"

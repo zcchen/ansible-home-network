@@ -1,0 +1,20 @@
+---
+
+- name: "Check is '{{ bin }}' installed already?"
+  ansible.builtin.shell: "command -v {{ bin }}"
+  changed_when: false
+  register: reg_bin_path
+  ignore_errors: yes
+
+- name: "set '{{ bin }}' command path"
+  ansible.builtin.set_fact:
+    _wireguard__binary_path: "{{ reg_bin_path.stdout }}"
+
+- name: "raise error since missing binary '{{ bin }}'"
+  ansible.builtin.fail:
+    msg: "'{{ bin }}' is NOT found in this firmware."
+  when:
+    - not _wireguard__binary_path
+    - _failed_if_binary_not_found
+
+

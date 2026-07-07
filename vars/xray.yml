@@ -1,0 +1,23 @@
+_xray_snippet__streamSettings_base:
+  network: xhttp
+  security: tls
+  tlsSettings:
+    alpn: ['h3', 'h2', 'http/1.1']
+  wsSettings:
+    path: /websocket
+  # grpcSettings:
+  #   serviceName: /grpc
+  xhttpSettings:
+    mode: "auto"
+    path: /xhttp
+  sockopt:
+    domainStrategy: UseIPv4
+    tcpFastOpen: true
+    tcpCongestion: bbr
+
+_xray_snippet__client_outbound_direct:
+  - protocol: freedom
+    settings:
+      domainStrategy: AsIs
+    tag: "direct"
+

@@ -1,0 +1,294 @@
+---
+
+- name: Set Wireguard config sections for uci command on OpenWrt Machine
+  ansible.builtin.set_fact:
+    _wg__uci_interface_options: "{{ options }}"
+    _wg__uci_sections_opts: "{{ _wg__uci_sections_opts | default({}) | combine({k: section_opts}) }}"
+  with_dict: "{{ _wg__hostvars }}"
+  loop_control:
+    label: "{{ {'host': k, 'endpoint': v.endpoint, 'port': v.port} }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    options:
+      proto: wireguard
+      private_key: "{{ _wg__private_key }}"
+      listen_port: "{{ wireguard__port }}"
+      delegate: 0
+      defaultroute: 0
+      addresses: "{{ [wireguard__address] }}"
+    section_opts: "{{ section_opts_base | combine(endpoint) }}"
+    endpoint: "{{ __endpoint if __endpoint.endpoint_host and __endpoint.endpoint_port else {} }}"
+    __endpoint:
+      endpoint_host: "{{ '127.0.0.1' if k in _wg__plugin_xray_tunnels else v.endpoint }}"
+      endpoint_port: "{{ _wg__plugin_xray_tunnels[k].local_port if k in _wg__plugin_xray_tunnels else v.port }}"
+    section_opts_base:
+      description: "{{ k }}"
+      public_key: "{{ v.public_key }}"
+      route_allowed_ips: 1
+      persistent_keepalive: "{{ v.persistent_keepalive }}"
+      allowed_ips: "{{ v.allowed_ips }}"
+
+- name: Find the Wireguard config sections for updating
+  with_dict: "{{ _openwrt__network_conf }}"
+  loop_control:
+    label: "{{ {'key': item.key, 'value': {'type': item.value.type}} }}"
+  when:
+    - item.value.type == section_type
+    - item.value.options.description in _wg__uci_sections_opts
+  ansible.builtin.set_fact:
+    _wg__uci_hostkey_handled: "{{ _wg__uci_hostkey_handled | default([]) + [host_key] }}"
+    _wg__uci_sections_update: "{{ _wg__uci_sections_update | default([]) + [section_u] }}"
+  vars:
+    section_type: "wireguard_{{ wireguard__interface }}"
+    host_key: "{{ item.value.options.description }}"
+    section_u:
+      name: "{{ item.key }}"
+      type: "wireguard_{{ wireguard__interface }}"
+      options: "{{ _wg__uci_sections_opts[item.value.options.description] }}"
+
+- name: Find the Wireguard config sections for deleting
+  with_dict: "{{ _openwrt__network_conf }}"
+  loop_control:
+    label: "{{ {'key': item.key, 'value': {'type': item.value.type}} }}"
+  when:
+    - item.value.type == section_type
+    - item.value.options.description not in _wg__uci_sections_opts
+  ansible.builtin.set_fact:
+    _wg__uci_hostkey_handled: "{{ _wg__uci_hostkey_handled | default([]) + [host_key] }}"
+    _wg__uci_sections_delete: "{{ _wg__uci_sections_delete | default([]) + [section_d] }}"
+  vars:
+    section_type: "wireguard_{{ wireguard__interface }}"
+    host_key: "{{ item.value.options.description }}"
+    section_d:
+      name: "{{ item.key }}"
+
+- name: Generate the Wireguard config sections for creating
+  with_dict: "{{ _wg__uci_sections_opts }}"
+  when:
+    - item.key not in _wg__uci_hostkey_handled | default([])
+  ansible.builtin.set_fact:
+    _wg__uci_sections_create: "{{ _wg__uci_sections_create | default([]) + [section_c] }}"
+  vars:
+    section_c:
+      type: "wireguard_{{ wireguard__interface }}"
+      options: "{{ item.value }}"
+
+- name: debug print uci command for network config sections
+  when: debug_print
+  block:
+    - name: debug print _wg__uci_interface_options
+      debug:
+        msg: "{{ _wg__uci_interface_options }}"
+    - name: debug print _wg__uci_hostkey_handled
+      debug:
+        msg: "{{ _wg__uci_hostkey_handled | default([]) }}"
+    - name: debug print _wg__uci_sections_update
+      debug:
+        msg: "{{ _wg__uci_sections_update | default([]) }}"
+    - name: debug print _wg__uci_sections_delete
+      debug:
+        msg: "{{ _wg__uci_sections_delete | default([]) }}"
+    - name: debug print _wg__uci_sections_create
+      debug:
+        msg: "{{ _wg__uci_sections_create | default([]) }}"
+
+# Get current firewall config via uci
+- name: Get the current firewall config
+  uci:
+    command: show
+    config: firewall
+  register: _wg__uci_firewall
+
+- name: debug print _wg__uci_firewall
+  when:
+    - debug_print
+    - false
+  debug:
+    msg: "{{ _wg__uci_firewall | default({}) }}"
+
+- name: "Get the data from uci result related to firewall config: sections of firewall.@rule[] & firewall.@zone[]"
+  with_dict: "{{ _wg__uci_firewall.uci['firewall'] }}"
+  loop_control:
+    label: "{{ {'section': k, 'type': v.type} }}"
+  ansible.builtin.set_fact:
+    _wg__fw_rules: "{{ _wg__fw_rules | default({}) | combine(section_rule_wireguard) }}"
+    _wg__fw_rule_section_id: "{{ _wg__fw_rule_section_id | default([]) + section_rule_id }}"
+    _wg__fw_zones: "{{ _wg__fw_zones | default({}) | combine(section_zone_wireguard) }}"
+    _wg__fw_zone_section_id: "{{ _wg__fw_zone_section_id | default([]) + section_zone_id }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    cond__rule_wireguard: "{{ v.type == 'rule' and v.options.dest_port | default('') == wireguard__port | string }}"
+    section_rule_wireguard: "{{ {k: v} if cond__rule_wireguard else {} }}"
+    section_rule_id: "{{ [k] if cond__rule_wireguard else [] }}"
+    cond__zone_wireguard: "{{ v.type == 'zone' and v.options.network | default('') == wireguard__interface }}"
+    section_zone_wireguard: "{{ {k: v} if cond__zone_wireguard else {} }}"
+    section_zone_id: "{{ [k] if cond__zone_wireguard else [] }}"
+  failed_when:
+    - _wg__fw_rule_section_id | length > 1 or _wg__fw_zone_section_id | length > 1
+
+- name: "Get the data from uci result related to firewall config: sections of firewall.@forwarding[]"
+  with_dict: "{{ _wg__uci_firewall.uci['firewall'] }}"
+  loop_control:
+    label: "{{ {'section': k, 'type': v.type} }}"
+  ansible.builtin.set_fact:
+    _wg__fw_forwardings: "{{ _wg__fw_forwardings | default({}) | combine(section_fwd_wireguard) }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    cond__fwd_wireguard: >-
+      {{ v.type == 'forwarding' and 
+         fw_zone_name != '' and
+         (v.options.src | default('') == fw_zone_name or v.options.dest | default('') == fw_zone_name)
+      }}
+    section_fwd_wireguard: "{{ {k: v} if cond__fwd_wireguard else {} }}"
+    fw_zone_section_id: "{{ _wg__fw_zone_section_id[0] | default('') }}"
+    fw_zone_name: "{{ _wg__fw_zones[fw_zone_section_id].options.name if fw_zone_section_id else '' }}"
+
+- name: debug print uci current sections
+  when: debug_print
+  block:
+    - name: debug print _wg__fw_rules
+      debug:
+        msg: "{{ _wg__fw_rules | default({}) }}"
+    - name: debug print _wg__fw_rule_section_id
+      debug:
+        msg: "{{ _wg__fw_rule_section_id | default({}) }}"
+    - name: debug print _wg__fw_zones
+      debug:
+        msg: "{{ _wg__fw_zones | default({}) }}"
+    - name: debug print _wg__fw_zone_section_id
+      debug:
+        msg: "{{ _wg__fw_zone_section_id | default({}) }}"
+    - name: debug print _wg__fw_forwardings
+      debug:
+        msg: "{{ _wg__fw_forwardings | default({}) }}"
+
+- name: setup firewall.@rule[], firewall.@zone[] & firewall.@forwarding[] for extra_vlans
+  ansible.builtin.set_fact:
+    _wg__uci_sections__fw_rule__add: "{{ sections_rule_add if cond__fw_rule_need_add else [] }}"
+    _wg__uci_sections__fw_rule__mod: "{{ sections_rule_mod if not cond__fw_rule_need_add else [] }}"
+    _wg__uci_sections__fw_zone__add: "{{ sections_zone_add if cond__fw_zone_need_add else [] }}"
+    _wg__uci_sections__fw_zone__mod: "{{ sections_zone_mod if not cond__fw_zone_need_add else [] }}"
+    _wg__uci_sections__fw_fwd__add: "{{ sections_fwd_add if cond__fw_fwd_need_add else [] }}"
+    _wg__uci_sections__fw_fwd__mod: "{{ sections_fwd_mod if not cond__fw_fwd_need_add else [] }}"
+  vars:
+    sections_rule_add:
+      - type: rule
+        options:
+          name: Allow-Wireguard-In
+          src: wan
+          dest_port: "{{ wireguard__port }}"
+          proto: ["udp"]
+          target: ACCEPT
+    sections_rule_mod: "{{ [sections_rule_add[0] | combine({'name': _wg__fw_rule_section_id[0]})] }}"
+    cond__fw_rule_need_add: "{{ _wg__fw_rules | length == 0 }}"
+    sections_zone_add:
+      - type: zone
+        options:
+          forward: ACCEPT
+          input: ACCEPT
+          output: ACCEPT
+          name: "{{ wireguard__interface }}"
+          network: "{{ wireguard__interface }}"
+    sections_zone_mod: "{{ [sections_zone_add[0] | combine({'name': _wg__fw_zone_section_id[0]})] }}"
+    cond__fw_zone_need_add: "{{ _wg__fw_zones | length == 0 }}"
+    sections_fwd_add:
+      - type: "forwarding"
+        options:
+          src: "{{ wireguard__interface }}"
+          dest: "wan"
+      - type: "forwarding"
+        options:
+          src: "wan"
+          dest: "{{ wireguard__interface }}"
+    sections_fwd_mod: >-
+      {{ _wg__fw_forwardings | dict2items | map('json_query', '[value, {name: key}]') | map("combine")
+          | zip(sections_fwd_add) | map("combine", recursive=True) | list}}
+    cond__fw_fwd_need_add: "{{ _wg__fw_forwardings | length == 0 }}"
+
+- name: debug print uci command for firewall config sections
+  when: debug_print
+  block:
+    - name: debug print _wg__uci_sections__fw_rule__add
+      debug:
+        msg: "{{ _wg__uci_sections__fw_rule__add | default([]) }}"
+    - name: debug print _wg__uci_sections__fw_rule__mod
+      debug:
+        msg: "{{ _wg__uci_sections__fw_rule__mod | default([]) }}"
+    - name: debug print _wg__uci_sections__fw_zone__add
+      debug:
+        msg: "{{ _wg__uci_sections__fw_zone__add | default([]) }}"
+    - name: debug print _wg__uci_sections__fw_zone__mod
+      debug:
+        msg: "{{ _wg__uci_sections__fw_zone__mod | default([]) }}"
+    - name: debug print _wg__uci_sections__fw_fwd__add
+      debug:
+        msg: "{{ _wg__uci_sections__fw_fwd__add | default([]) }}"
+    - name: debug print _wg__uci_sections__fw_fwd__mod
+      debug:
+        msg: "{{ _wg__uci_sections__fw_fwd__mod | default([]) }}"
+
+# uci command update
+- name: uci command for network config
+  notify:
+    - uci commit network
+    - "Restart wireguard"
+  block:
+    - name: "Create / Update the {{ wireguard__interface }} options"
+      uci:
+        command: "{{ 'update' if wireguard__interface is in _openwrt__network_conf else  'create' }}"
+        config: network
+        sections: "{{ [ section ] }}"
+      vars:
+        section:
+          name: "{{ wireguard__interface }}"
+          type: interface
+          options: "{{ _wg__uci_interface_options }}"
+    - name: "Delete the outdated peers' options for {{ wireguard__interface }}"
+      when: _wg__uci_sections_delete | default([]) | length > 0
+      uci:
+        command: delete
+        config: network
+        sections: "{{ _wg__uci_sections_delete }}"
+    - name: "Create the missing peers' options for {{ wireguard__interface }}"
+      when: _wg__uci_sections_create | default([]) | length > 0
+      uci:
+        command: create
+        config: network
+        sections: "{{ _wg__uci_sections_create }}"
+    - name: "Update the peers' options for {{ wireguard__interface }}"
+      when: _wg__uci_sections_update | default([]) | length > 0
+      uci:
+        command: update
+        config: network
+        sections: "{{ _wg__uci_sections_update }}"
+
+- name: uci command for firewall config
+  notify:
+    - uci commit firewall
+    - "Restart firewall"
+  block:
+    - name: Execute the uci command for firewall config, add
+      when: sections | default([]) | length > 0
+      uci:
+        command: create
+        config: firewall
+        sections: "{{ sections }}"
+      vars:
+        sections: >-
+          {{ _wg__uci_sections__fw_rule__add | default([])
+             + _wg__uci_sections__fw_zone__add | default([])
+             + _wg__uci_sections__fw_fwd__add | default([]) }}
+    - name: Execute the uci command for firewall config, modify
+      when: sections | default([]) | length > 0
+      uci:
+        command: update
+        config: firewall
+        sections: "{{ sections }}"
+      vars:
+        sections: >-
+          {{ _wg__uci_sections__fw_rule__mod | default([])
+             + _wg__uci_sections__fw_zone__mod | default([])
+             + _wg__uci_sections__fw_fwd__mod | default([]) }}

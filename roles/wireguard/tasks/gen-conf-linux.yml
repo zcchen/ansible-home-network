@@ -1,0 +1,17 @@
+---
+
+- name: Create WireGuard configuration directory on Linux Machine
+  ansible.builtin.file:
+    dest: "{{ _wg__confdir.path }}"
+    state: directory
+    mode: "{{ _wg__confdir.dirmode }}"
+
+- name: "Generate WireGuard config file <{{ _wg__confdir.path }}/{{ wireguard__interface }}.conf> on Linux Machine"
+  ansible.builtin.template:
+    src: wg.conf.j2
+    dest: "{{ _wg__confdir.path }}/{{ wireguard__interface }}.conf"
+    owner: "{{ _wg__confdir.owner }}"
+    group: "{{ _wg__confdir.group }}"
+    mode: "{{ _wg__confdir.filemode }}"
+  notify:
+    - "Restart wireguard"

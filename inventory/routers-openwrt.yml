@@ -1,0 +1,23 @@
+routers:
+  hosts:
+    router.A.lan:
+      openwrt__ddns_hosts:
+        myddns:
+          lookup_host: "{{ __ddns.router.A }}.{{ __domain_basename }}"
+          domain: "{{ __ddns.router.A }}@{{ __domain_basename }}"
+    router.B.lan:
+      openwrt__ddns_hosts:
+        myddns:
+          lookup_host: "{{ __ddns.router.B }}.{{ __domain_basename }}"
+          domain: "{{ __ddns.router.B }}@{{ __domain_basename }}"
+  vars:
+    openwrt__ddns_host_default:
+      use_ipv6: 1
+      enabled: 1
+      use_https: 1
+      interface: "pppoe-wan"
+      ip_interface: "pppoe-wan"
+      service_name: "{{ __ddns__service_name }}"
+      username: "{{ __ddns__service_username }}"
+      password: "{{ __ddns__service_password }}"
+    openwrt__dhcp_static_clients: "{{ __dhcp__static_clients | default([]) }}"

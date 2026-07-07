@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+
+[[{{ type }}]]
+{% for k, v in value.items() %}
+{%   if v is mapping %}
+{%     for kk, vv in v.items() %}
+{{ k }}.{{ kk }} = {{ vv | tojson }}
+{%     endfor %}
+{%   else %}
+{{ k }} = {{ v | tojson }}
+{%   endif %}
+{% endfor %}
+

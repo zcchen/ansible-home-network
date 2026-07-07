@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+
+[common]
+{% for key, value in _frp__server.items() %}
+{{ key }} = {{ value }}
+{% endfor %}
+
+includes = /etc/frps/config/*.ini

@@ -1,0 +1,20 @@
+---
+
+- name: install the docker environment
+  become: true
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - docker.io
+      - docker-compose
+      - python3-docker
+
+- name: "add user <{{ansible_ssh_user}}> to group <docker>"
+  become: true
+  user:
+    name: "{{ansible_ssh_user}}"
+    groups: docker
+    append: true
+
+- meta: reset_connection                # <--- must do this if using pipelining
+

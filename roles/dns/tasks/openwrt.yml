@@ -1,0 +1,66 @@
+---
+
+- name: get config values in var 'dnsmasq_dnsmasq_d_files_present'.
+  with_items: "{{ dnsmasq_dnsmasq_d_files_present.values() }}"
+  ansible.builtin.set_fact:
+    _dns__config_values: "{{ _dns__config_values | default([]) + [v] }}"
+  vars:
+    v: "{{ item }}"
+
+- name: debug show _dns__config_values
+  when: debug_print
+  debug:
+    msg: "{{ _dns__config_values }}"
+
+- name: get the original config from var 'dnsmasq_dnsmasq_d_files_present' for address / server data
+  with_items: "{{ _dns__config_values }}"
+  ansible.builtin.set_fact:
+    _dns__config_addresses: "{{ _dns__config_addresses | default([]) + addresses }}"
+    _dns__config_servers: "{{ _dns__config_servers | default([]) + servers }}"
+  vars:
+    cond__is_addr: "{{ item is regex('^address\\s*=\\s*') }}"
+    addresses: "{{ [item | regex_replace('^address\\s*=\\s*', '')] if cond__is_addr else [] }}"
+    cond__is_server: "{{ item is regex('^server\\s*=\\s*') }}"
+    servers: "{{ [item | regex_replace('^server\\s*=\\s*', '')] if cond__is_server else [] }}"
+
+- name: debug show _dns__config_addresses
+  when: debug_print
+  debug:
+    msg: "{{ _dns__config_addresses | default([]) }}"
+- name: debug show _dns__config_servers
+  when: debug_print
+  debug:
+    msg: "{{ _dns__config_servers | default([]) }}"
+
+- name: find the dnsmasq section to be update
+  uci:
+    command: find_sections
+    config: dhcp
+    condition:
+      type: dnsmasq
+  register: _dns__openwrt_dnsmasq_section
+  failed_when: _dns__openwrt_dnsmasq_section.uci.found | length > 1
+
+- name: debug show the dnsmasq section name
+  debug:
+    msg: "{{ _dns__openwrt_dnsmasq_section.uci.found }}"
+
+# - name: raise error if multiple dnsmasq sections found
+#   ansible.builtin.fail:
+#     msg: "dnsmasq has more than one sections, aborting..."
+#   when: _dns__openwrt_dnsmasq_section.uci.found | length > 1
+
+- name: Update the settings for dnsmasq config
+  when: _dns__config_addresses | length > 0 or _dns__config_servers | length > 0
+  uci:
+    command: update
+    config: dhcp
+    sections:
+      - name: "{{ _dns__openwrt_dnsmasq_section.uci.found[0] }}"
+        type: dnsmasq
+        options:
+          address: "{{ _dns__config_addresses | default([]) }}"
+          server: "{{ _dns__config_servers | default([]) }}"
+  notify:
+    - uci commit dhcp
+    - Restart dnsmasq

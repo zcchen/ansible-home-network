@@ -1,0 +1,73 @@
+---
+
+wireguard:
+  children:
+    wireguard_ports:
+      vps.A:
+      vps.B:
+    wireguard_routers:
+      router.A.pub:
+      router.B.pub:
+    wireguard_peers:
+
+
+wireguard_ports:
+  hosts:
+    vps.A:
+      wireguard__address: "{{ __network.vps.A.wireguard }}"
+    vps.B:
+      wireguard__address: "{{ __network.vps.B.wireguard }}"
+  vars:
+    wireguard__preup:
+      - sysctl -w net.ipv4.ip_forward=1
+    wireguard__postup:
+      - iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+      - iptables -t nat -A POSTROUTING -o %i -j MASQUERADE
+      - iptables -A FORWARD -i %i -j ACCEPT
+      - iptables -A FORWARD -o %i -j ACCEPT
+    wireguard__postdown:
+      - iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+      - iptables -t nat -D POSTROUTING -o %i -j MASQUERADE
+      - iptables -D FORWARD -i %i -j ACCEPT
+      - iptables -D FORWARD -o %i -j ACCEPT
+
+
+wireguard_routers:
+  hosts:
+    router.A.pub:
+      wireguard__endpoint: "{{ __ddns.router.A }}.{{ __domain_basename }}"
+      wireguard__address: "{{ __network.router.A.wireguard }}"
+      wireguard__allowed_ips: "{{ [__network.router.A.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
+    router.B.pub:
+      wireguard__endpoint: "{{ __ddns.router.B }}.{{ __domain_basename }}"
+      wireguard__address: "{{ __network.router.B.wireguard }}"
+      wireguard__allowed_ips: "{{ [__network.router.B.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
+  vars:
+    wireguard__mtu: 1412    # default IPv6 is 1420, PPPoE modifying: -8, calc: 1412
+    wireguard__persistent_keepalive: 5
+    wireguard__plugin_xray_tunnels:
+      vps.A:
+        local_port: 61820
+        proxy:
+          addr: "{{ __network.vps.A.baseAddr }}"
+          port: 443
+          password: "{{ __xray_snippet__passwords.wireguard }}"
+          method: "vless"
+          streamSettings: "{{ _xray_snippet__streamSettings_base }}"
+      vps.B:
+        local_port: 61821
+        proxy:
+          addr: "{{ __network.vps.B.baseAddr }}"
+          port: 443
+          password: "{{ __xray_snippet__passwords.wireguard }}"
+          method: "vless"
+          streamSettings: "{{ _xray_snippet__streamSettings_base }}"
+
+
+wireguard_peers:
+  hosts:
+  vars:
+    wireguard__ignore_peers:
+      - router.A.pub
+      - router.B.pub
+

@@ -1,0 +1,60 @@
+---
+
+- name: Set facts for registry__docker
+  ansible.builtin.set_fact:
+    _registry__docker: "{{ registry__docker_default | combine(registry__docker, recursive=true) }}"
+    _registry__dir: "{{ registry__dir_default | combine(registry__dir, recursive=true) }}"
+    _registry__secret: "{{ registry__secret_default | combine(registry__secret, recursive=true) }}"
+    _registry__clean: "{{ registry__clean_default | combine(registry__clean, recursive=true) }}"
+    _registry__domain: "{{ registry__domain_default | combine(registry__domain, recursive=true) }}"
+  vars:
+    docker_compose_app__name: docker-registry
+
+- name: Set <_registry__dir_data> fact for <{{ docker_compose_app__name }}>
+  ansible.builtin.set_fact:
+    _registry__dir_data: "{{ (_registry__dir_data | default([])) + d }}"
+  vars:
+    d: [ "{{ item }}" ]
+    docker_compose_app__name: docker-registry
+  with_items: "{{ _registry__domain.ports.keys() }}"
+
+- name: "Prepare files for <{{ docker_compose_app__name }}>"
+  become: true
+  vars:
+    docker_compose_app__name: docker-registry
+  block:
+  - name: "make dir <{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}>"
+    ansible.builtin.file:
+      path: "{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}"
+      state: directory
+      mode: "0755"
+      owner: "root"
+      group: "root"
+  - name: "Render the registry-garbage-collect crontab file"
+    ansible.builtin.cron:
+      name: "Registry Garbage Collection"
+      minute: "{{ _registry__clean.garbage_collect_time.minute }}"
+      hour: "{{ _registry__clean.garbage_collect_time.hour }}"
+      day: "{{ _registry__clean.garbage_collect_time.day }}"
+      month: "{{ _registry__clean.garbage_collect_time.month}}"
+      weekday: "{{ _registry__clean.garbage_collect_time.weekday }}"
+      job: "/bin/registry garbage-collect /etc/docker/registry/config.yml"
+      state: "present"
+      cron_file: "{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}/garbage-collect.crontab"
+      user: root
+
+- name: Include docker-compose-app role for <registry>
+  ansible.builtin.include_role:
+    name: "docker-compose-app"
+    public: false
+  vars:
+    #docker_compose_app__debug: false
+    docker_compose_app__name: docker-registry
+    #docker_compose_app__compose_file_content: "{{ _registry__docker_compose_file }}"
+    docker_compose_app__compose_file_template: 'docker-compose.yml.j2'
+    docker_compose_app__files:
+      - path: "{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}/nginx.conf"
+        content: "{{ lookup('ansible.builtin.template', 'nginx.conf.j2') }}"
+      - path: "{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}/cleanup.sh"
+        content: "{{ lookup('ansible.builtin.template', 'cleanup.sh.j2') }}"
+        mode: '0755'

@@ -1,0 +1,44 @@
+# {{ ansible_managed }}
+
+[Interface]
+# {{ inventory_hostname }}
+Address = {{ wireguard__address }}
+PrivateKey = {{ _wg__private_key }}
+ListenPort = {{ wireguard__port }}
+{% if wireguard__dns %}DNS = {{ wireguard__dns }}
+{% endif %}
+{% if wireguard__mtu %}MTU = {{ wireguard__mtu }}
+{% endif %}
+{% if wireguard__table %}Table = {{ wireguard__table }}
+{% endif %}
+{% for cmd in wireguard__preup %}
+PreUp = {{ cmd }}
+{% endfor %}
+{% for cmd in wireguard__postup %}
+PostUp = {{ cmd }}
+{% endfor %}
+{% for cmd in wireguard__predown %}
+PreDown = {{ cmd }}
+{% endfor %}
+{% for cmd in wireguard__postdown %}
+PostDown = {{ cmd }}
+{% endfor %}
+
+{% for host, vars in _wg__hostvars.items() %}
+[Peer]
+# {{ host }}
+PublicKey = {{ vars.public_key}}
+AllowedIPs = {{ vars.allowed_ips | join(", ") }}
+PersistentKeepalive = {{ vars.persistent_keepalive }}
+{%   if host in vars.plugin_xray_tunnels %}
+# Connect to the peer via Xray tunnel
+Endpoint = 127.0.0.1:{{ vars.plugin_xray_tunnels[host].local_port }}
+{%   elif inventory_hostname in vars.plugin_xray_tunnels %}{# The mirror condition of the above #}
+# No endpoint is needed for this peer, waiting for its connection via it Xray tunnel.
+{%   elif vars.endpoint and vars.port %}
+Endpoint = {{ vars.endpoint }}:{{ vars.port }}
+{%   else %}
+# No endpoint is needed for this peer, waiting for the connection from this peer
+{%   endif %}
+
+{% endfor %}

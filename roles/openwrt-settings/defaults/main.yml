@@ -1,0 +1,70 @@
+---
+
+openwrt__crons: {}    # key is the crontab jobname, value is defined as below
+# example_job:
+#   minute: "30"
+#   hour: "4"
+#   day: "*"
+#   month: "*"
+#   weekday: "*"
+#   job: /sbin/reboot   # default is none, if none, error will be raised
+openwrt__crons_keeps: [] # The cron jobs must be keep even its not set in `openwrt__crons`
+
+openwrt__ddns_hosts: {}
+# key is the lookup_hosts, value as below
+openwrt__ddns_host_default:
+  lookup_host: ""         # essential: The target domain to be search.
+  domain: ""              # essential: subdomain@domain
+  use_ipv6: 0             # optional:  set to 1 if try to testing ipv6
+  enabled: 0              # optional:  set to 1 if enabled
+  service_name: ""        # essential: domain service provider
+  username: ""            # essential: find settings from domain service provider
+  password: ""            # essential: find settings from domain service provider
+  use_https: 1            # optional:  change it back to 0, if your domain service provider required.
+  ip_source: 'interface'  # use this default setting.
+  interface: "lo"         # essential: change to your `wan` interface depended by your device.
+  ip_interface: "lo"      # essential: change to your `wan` interface depended by your device.
+  # use the default values for below options
+  use_syslog: 2
+  check_unit: "minutes"
+  force_unit: "minutes"
+  retry_unit: "minutes"
+  cacert: '/etc/ssl/certs'
+  check_interval: 5
+  force_interval: 5
+  force_ipversion: 1
+
+openwrt__extra_vlans: []  # extra vlan settings, the element is similar as `openwrt__base_vlan`.
+openwrt__base_vlan:       # The base vlan settings, it will be used when `openwrt__extra_vlans` is set.
+  vlan_id: 1              # base vlan id must be 1
+  interface: lan          # The base interface must be lan
+  network: {}             # The address options, default is {}, but must be set for extra vlans as following example
+    # ipaddr: 192.168.x.1
+    # netmask: 255.255.255.0
+    # proto: static
+
+openwrt__vlans_firewall:
+  zone:
+    forward: REJECT
+    input: REJECT
+    output: ACCEPT
+    name: ""    # vlan interface name
+    network: "" # vlan interface name
+  forwarding:
+    dest: wan
+    src: "" # vlan interface name
+  rule:
+    dest_port: '53 67 68'
+    target: ACCEPT
+    proto:
+      - tcp
+      - udp
+      - icmp
+    name: "" # "Alllow-{{ vlan interface name }}"
+    src: ""   # vlan interface name
+
+openwrt__dhcp_static_clients: {}
+# example_clent:
+#   ip: 192.168.1.X
+#   mac: 'FF:FF:FF:FF:FF:FF'
+

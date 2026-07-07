@@ -1,0 +1,59 @@
+---
+
+xray__version: 26.5.9
+xray__force_reinstall: false
+xray__download_proxy: ""
+
+xray__location_asset: ""    # default is empty
+
+xray__ignore_configs_error: false
+
+xray__plugins: {}
+xray__plugins_default:
+  geodata:
+    enable: false
+    command_env:  {}
+    command_args: "{{ ['-d', xray__location_asset] if xray__location_asset else [] }}"
+    logfile: "/dev/null"
+    cron:
+      enable: false
+      name: xray-geodata-plugin
+      minute: "0"
+      hour: "*/1"   # update at every hour
+      day: "*"
+      month: "*"
+      weekday: "*"
+
+xray__configs: {}   # key is the config name, value should be the format defined as xray__config_elem
+
+xray__config_elem: {}
+
+xray__config_elem_default:
+  log:
+    access:
+    error:
+    loglevel: warning
+    dnsLog: false
+  #api: {}
+  #dns: {}
+  routing:
+    domainStrategy: AsIs
+    domainMatcher: hybrid
+    rules: []
+    balancers: []
+  #policy: {}
+  inbounds: []
+  outbounds: []
+  observatory:
+    subjectSelector: ['']
+    probeUrl: "https://www.google.com/generate_204"
+    probeInterval: "30s"
+    enableConcurrency: true
+  #burstObservatory:
+    #subjectSelector: ['']
+    #pingConfig:
+      #destination: "https://www.google.com/generate_204"
+      #connectivity: ""
+      #interval: "1m"
+      #sampling: 10
+      #timeout": "30s"

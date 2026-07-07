@@ -1,0 +1,49 @@
+---
+
+- name: Combine the cron job to _openwrt__crons var
+  ansible.builtin.set_fact:
+    _crons_add: "{{ _crons_add | default([]) | combine(_v_cron) }}"
+  with_dict: "{{ cron_jobs }}"
+  failed_when: not v.job
+  vars:
+    v: "{{ cron_default | combine(item.value, {'name': item.key}) }}"
+
+- name: Get current crontab
+  ansible.builtin.command: crontab -l
+  register: _crons_curr
+  changed_when: false
+  failed_when: false
+- name: Identify unlisted jobs to remove
+  ansible.builtin.set_fact:
+    _crons_del: "{{ _crons_curr.stdout | regex_findall('#Ansible: (.*)') | difference(_cron_jobs_keep) }}"
+  vars:
+    _cron_jobs_keep: "{{ cron_jobs.keys() | list + cron_jobs_keep }}"
+
+- name: Remove the unlisted crontab jobs
+  with_items: "{{ _crons_del }}"
+  ansible.builtin.cron:
+    name: "{{ item }}"
+    state: "absent"
+  notify:
+    - Restart cron
+
+- name: Add the listed crontab jobs
+  with_items: "{{ _crons_add | default([]) }}"
+  ansible.builtin.cron:
+    name: "{{ item.name }}"
+    minute: "{{ item.minute }}"
+    hour: "{{ item.hour }}"
+    day: "{{ item.day }}"
+    month: "{{ item.month}}"
+    weekday: "{{ item.weekday }}"
+    job: "{{ item.job }}"
+    state: "present"
+  notify:
+    - Restart cron
+
+- name: enable cron service
+  ansible.builtin.service:
+    name: cron
+    enabled: true
+  notify:
+    - "Restart ddns"

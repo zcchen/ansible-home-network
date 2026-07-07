@@ -1,0 +1,65 @@
+---
+
+- name: Check if certificate already exists, if no, create it later.
+  ansible.builtin.stat:
+    path: /etc/letsencrypt/live/{{ cert_item.name }}/cert.pem
+  register: letsencrypt_cert
+
+- name: Delete Existing Certificate
+  when: certbot__del_before_cert
+  block:
+    - name: Delete Certificate by certbot
+      command: "{{ certbot__command_delete }}"
+      when:
+        - letsencrypt_cert.stat.exists
+    - name: Delete the certificate directory '{{ cert_item.name }}'
+      file:
+        path: /etc/letsencrypt/live/{{ cert_item.name }}
+        state: absent
+      when:
+        - letsencrypt_cert.stat.exists
+
+- name: Check if domains have changed
+  when:
+    - letsencrypt_cert.stat.exists
+    - not certbot__del_before_cert
+  block:
+    - name: Register certificate domains
+      # shell: "{{ certbot__script }} certificates --cert-name {{ cert_item.name }} | grep Domains | cut -d':' -f2"
+      shell: "{{ certbot__command_listDomains}}"
+      changed_when: false
+      register: letsencrypt_cert_domains_dirty
+
+    - name: Cleanup domain list
+      ansible.builtin.set_fact:
+        letsencrypt_cert_domains: "{{ letsencrypt_cert_domains_dirty.stdout | trim | split(' ') | map('trim') | select('!=', '') | list | sort }}"
+
+    - name: Determine if domains have changed
+      ansible.builtin.set_fact:
+        letsencrypt_cert_domains_changed: "{{ letsencrypt_cert_domains != (([cert_item.name] + cert_item.domains) | map('trim') | select('!=', '') | unique | list | sort) }}"
+
+    - name: Debug print letsencrypt_cert_domains
+      ansible.builtin.debug:
+        msg: "{{ letsencrypt_cert_domains}}"
+    - name: Debug print letsencrypt_cert_domains_changed
+      ansible.builtin.debug:
+        msg: "{{ letsencrypt_cert_domains_changed}}"
+
+- name: Generate new certificate if one doesn't exist.
+  when: certbot__del_before_cert or not letsencrypt_cert.stat.exists or letsencrypt_cert_domains_changed | default(false)
+  command: "{{ certbot__command_create }}"
+  register: result
+  until: result.rc == 0
+  retries: 5
+  delay: 10
+
+- name: Add cron job for certbot renewal (if configured).
+  ansible.builtin.cron:
+    name: Certbot automatic renewal.
+    job: "{{ certbot__command_renew }}"
+    minute: "{{ certbot__auto_renew_minute }}"
+    hour: "{{ certbot__auto_renew_hour }}"
+    user: "{{ certbot__auto_renew_user }}"
+  when: certbot__auto_renew
+
+

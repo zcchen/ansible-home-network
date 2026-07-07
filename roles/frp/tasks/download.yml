@@ -1,0 +1,55 @@
+---
+
+- name: "check system machine arch: {{ arch }}"
+  ansible.builtin.set_fact:
+    _frp__arch: "{{ arch }}"
+  vars:
+    arch: "{{ ansible_architecture }}"
+- name: "Check system machine is amd64?"
+  ansible.builtin.set_fact:
+    _frp__arch: "amd64"
+  when: ansible_architecture == "x86_64"
+- name: "Check system machine is i386"
+  ansible.builtin.set_fact:
+    _frp__arch: "386"
+  when: ansible_architecture == "386"
+- name: "Check system machine is aarch64"
+  ansible.builtin.set_fact:
+    _frp__arch: "arm64"
+  when: ansible_architecture == "aarch64"
+
+- name: "Check if {{ filename }} downloaded"
+  stat:
+    path: "/tmp/{{ filename }}"
+  vars:
+    filename: "frp_{{ frp__version }}_linux_{{ _frp__arch }}.tar.gz"
+  register: frps_download_state
+
+- name: download frp from release
+  ansible.builtin.get_url:
+    url: https://github.com/fatedier/frp/releases/download/v{{ frp__version }}/frp_{{ frp__version }}_linux_{{ _frp__arch }}.tar.gz
+    dest: "/tmp/frp_{{ frp__version }}_linux_{{ _frp__arch }}.tar.gz"
+  when: not frps_download_state.stat.exists
+
+- name: Install unzip and gtar zipinfo
+  become: true
+  ansible.builtin.apt:
+    name:
+      - zstd
+      - unzip
+    state: present
+    update_cache: yes
+
+- name: prepare the frp unarchive dir
+  ansible.builtin.file:
+    path: "/tmp/frp/"
+    state: directory
+    mode: '0755'
+
+- name: "Unarchive the file <{{ filename }}>"
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ filename }}"
+    dest: /tmp/frp/
+    remote_src: true
+  vars:
+    filename: "frp_{{ frp__version }}_linux_{{ _frp__arch }}.tar.gz"

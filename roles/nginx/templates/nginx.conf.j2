@@ -1,0 +1,72 @@
+{{ ansible_managed | comment }}
+
+# basic nginx config
+{% for k, v in _nginx__main.items() %}
+{{ k }} {{ v}};
+{% endfor %}
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+{% for k, v in _nginx__events.items() %}
+  {{ k }} {{ v }};
+{% endfor %}
+}
+
+http {
+  # Basic Settings
+{% for k, v in _nginx__http_core.basic.items() %}
+  {{ k }} {{ v }};
+{% endfor %}
+  # ssl settings
+{% for k, v in _nginx__http_core.ssl.items() %}
+  {{ k }} {{ v }};
+{% endfor %}
+  # gzip settings
+{% for k, v in _nginx__http_core.gzip.items() %}
+  {{ k }} {{ v }};
+{% endfor %}
+  # mime settings
+{% for k, v in _nginx__http_core.mime.items() %}
+  {{ k }} {{ v }};
+{% endfor %}
+  # Logging Settings
+{% for k, v in _nginx__http_core.log.items() %}
+  {{ k }} {{ v }};
+{% endfor %}
+
+  # Virtual Host Configs
+  include /etc/nginx/conf.d/*.conf;
+  include /etc/nginx/sites-enabled/*;
+}
+
+{% if _nginx__stream_core | length > 0 or nginx__stream_servers | length > 0 %}
+stream {
+{%   for k, v in _nginx__stream_core.items() %}
+  {{ k }} {{ v}};
+{%   endfor %}
+{%   for i in nginx__stream_servers %}
+  {{ i }}
+{%   endfor %}
+}
+{% endif %}
+
+#mail {
+#	# See sample authentication script at:
+#	# http://wiki.nginx.org/ImapAuthenticateWithApachePhpScript
+#
+#	# auth_http localhost/auth.php;
+#	# pop3_capabilities "TOP" "USER";
+#	# imap_capabilities "IMAP4rev1" "UIDPLUS";
+#
+#	server {
+#		listen     localhost:110;
+#		protocol   pop3;
+#		proxy      on;
+#	}
+#
+#	server {
+#		listen     localhost:143;
+#		protocol   imap;
+#		proxy      on;
+#	}
+#}

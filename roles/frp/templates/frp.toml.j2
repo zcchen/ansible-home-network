@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+
+{% for k, v in value.items() %}
+{%   if v is mapping %}
+{%     for kk, vv in v.items() %}
+{{ k }}.{{ kk }} = {{ vv | tojson }}
+{%     endfor %}
+{%   elif k != "includes" %}
+{{ k }} = {{ v | tojson }}
+{%   endif %}
+{% endfor %}
+
+{% if "includes" in value %}
+includes = {{ value['includes'] }}
+{% endif %}

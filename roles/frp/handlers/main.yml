@@ -1,0 +1,28 @@
+---
+
+- name: Restart frps
+  ansible.builtin.systemd_service:
+    name: "frps"
+    state: restarted
+
+- name: Restart frpc (systemd)
+  ansible.builtin.systemd_service:
+    name: "frpc@{{ value.serverAddr }}"
+    state: restarted
+  listen: "Restart frpc"
+  when: ansible_service_mgr == 'systemd'
+  failed_when:
+    - not value.serverAddr
+  with_items: "{{ frp__clients | default([]) }}"
+  loop_control:
+    label: "{{ {'addr': value.serverAddr, 'port': value.serverPort, 'transport': value.transport} }}"
+  vars:
+    client: "{{ frp__client_default | combine(item, {'includes': ['/etc/frpc/config/*.toml']}, recursive=True) }}"
+    value: "{{ client }}"
+
+- name: Restart frpc (initV)
+  ansible.builtin.service:
+    name: "{{ frp__client_cmd }}"
+    state: restarted
+  listen: "Restart frpc"
+  when: ansible_service_mgr != 'systemd'

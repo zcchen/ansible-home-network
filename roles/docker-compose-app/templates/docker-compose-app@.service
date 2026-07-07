@@ -1,0 +1,16 @@
+[Unit]
+Description = docker-compose-app@
+After = network.target docker.service
+Wants = network.target docker.service
+
+[Service]
+Type = simple
+Restart = always
+RestartPreventExitStatus = 23
+ExecStart = /usr/bin/docker-compose --ansi auto up
+ExecStop = /usr/bin/docker-compose --ansi auto down -v
+WorkingDirectory = {{ (docker_compose_app__dir_base, "%i/") | path_join }}
+
+[Install]
+WantedBy = multi-user.target
+

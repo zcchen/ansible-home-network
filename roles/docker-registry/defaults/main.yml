@@ -1,0 +1,45 @@
+---
+
+registry__port: 5000
+
+registry__docker: {}
+registry__docker_default:
+  images:
+    registry: registry:2
+    ui: klausmeyer/docker-registry-browser:1.7.4
+    nginx: nginx:1.27.3
+    cleanup: anoxis/registry-cli:latest
+    redis: redis:7.4.1
+  network:
+    subnet: 172.31.100.0/24
+
+registry__domain: {}
+registry__domain_default:
+  base: localhost
+  ports:
+    # key-value data:
+    # key is the docker content servername
+    # value has dict-type values, check the following default as example
+    docker.io:
+      is_default: true
+      subdomain: dockerhub
+      remoteurl: https://registry-1.docker.io
+
+registry__dir: {}
+registry__dir_default:
+  data: "{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}/data/"
+
+registry__secret: {}
+registry__secret_default:
+  ui_keybase: ""
+
+registry__clean: {}
+registry__clean_default:
+  images_keep_days: 90
+  garbage_collect_time:
+    minute: "0"
+    hour: "4"
+    day: "*"
+    month: "*"
+    weekday: "*"
+

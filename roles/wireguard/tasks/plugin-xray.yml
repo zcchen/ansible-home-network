@@ -1,0 +1,6 @@
+- name: including-role the xray role to setup the xray wrapping tunnel
+  when: _wg__plugin_xray_config | default({}) | length > 0
+  ansible.builtin.include_role:
+    name: xray
+  vars:
+    xray__configs: "{{ _wg__plugin_xray_config }}"

@@ -1,0 +1,139 @@
+---
+
+- name: "Check if /usr/lib/ddns/dynamic_dns_updater.sh exists"
+  ansible.builtin.stat:
+    path: /usr/lib/ddns/dynamic_dns_updater.sh
+  register: ddns_script__state
+
+- ansible.builtin.fail:
+    msg: "This firmware does NOT contain any ddns related scripts."
+  when:
+    - not ddns_script__state.stat.exists
+
+- name: Get the current ddns config
+  uci:
+    command: show
+    config: ddns
+  register: _ddns__sections_curr
+
+# - name: debug print '_ddns__sections_curr'
+#   debug:
+#     msg: "{{ _ddns__sections_curr }}"
+
+- name: Identify unlisted ddns services to remove
+  when: _ddns__sections_curr.uci.keys() | length > 0
+  with_items: "{{ _ddns__sections_curr.uci.ddns.keys() | difference(ddns__hosts.keys() | list + ['global']) | list }}"
+  ansible.builtin.set_fact:
+    _ddns__sections_delete: "{{ _ddns__sections_delete | default([]) + section_delete }}"
+  vars:
+    section_delete: "{{ [section] }}"
+    section:
+      name: "{{ item }}"
+
+- name: debug print the options difference base on current sections
+  with_dict: "{{ ddns__hosts }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ ddns__host_default | combine(item.value) }}"
+    d: "{{ v | difference(_ddns__sections_curr.uci.ddns[k].options) | list }}"
+  debug:
+    msg: "{{ d }}"
+
+- name: Convert the ddns__lookup_hosts to update ddns sections for uci
+  with_dict: "{{ ddns__hosts }}"
+  when: d | list | length > 0
+  ansible.builtin.set_fact:
+    _ddns__sections_update: "{{ _ddns__sections_update | default([]) + section_update }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ ddns__host_default | combine(item.value) }}"
+    d: "{{ v | difference(_ddns__sections_curr.uci.ddns[k].options) }}"
+    section_update: "{{ [section] if k in _ddns__sections_curr.uci.ddns.keys() else [] }}"
+    section:
+      name: "{{ k }}"
+      type: service
+      options: "{{ v }}"
+  failed_when:
+    - not v.lookup_host or not v.domain or not v.service_name
+
+- name: Convert the ddns__lookup_hosts to create ddns sections for uci
+  with_dict: "{{ ddns__hosts }}"
+  ansible.builtin.set_fact:
+    _ddns__sections_create: "{{ _ddns__sections_create | default([]) + section_create }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ ddns__host_default | combine(item.value) }}"
+    section_create: "{{ [section] if k not in _ddns__sections_curr.uci.ddns.keys() else [] }}"
+    section:
+      name: "{{ k }}"
+      type: service
+      options: "{{ v }}"
+  failed_when:
+    - not v.lookup_host or not v.domain or not v.service_name
+
+- name: debug print '_ddns__sections_delete'
+  when: debug_print | default(false)
+  debug:
+    msg: "{{ _ddns__sections_delete | default([]) }}"
+- name: debug print '_ddns__sections_update'
+  when: debug_print | default(false)
+  debug:
+    msg: "{{ _ddns__sections_update | default([]) }}"
+- name: debug print '_ddns__sections_create'
+  when: debug_print | default(false)
+  debug:
+    msg: "{{ _ddns__sections_create | default([]) }}"
+
+- name: init the ddns config with global section
+  when: not _ddns__sections_curr.uci
+  uci:
+    command: create
+    config: ddns
+    sections:
+      - name: global
+        type: ddns
+        options:
+          ddns_dateformat: '%F %R'
+          ddns_loglines: 250
+          ddns_rundir: '/var/run/ddns'
+          ddns_logdir: '/var/log/ddns'
+  notify:
+    - "uci commit ddns"
+    - "Restart ddns"
+
+- name: delete the unexisted ddns config sections
+  when: _ddns__sections_delete | default([]) | length > 0
+  uci:
+    command: delete
+    config: ddns
+    sections: "{{ _ddns__sections_delete }}"
+  notify:
+    - "uci commit ddns"
+    - "Restart ddns"
+
+- name: create the ddns config sections
+  when: _ddns__sections_create | default([]) | length > 0
+  uci:
+    command: create
+    config: ddns
+    sections: "{{ _ddns__sections_create }}"
+  notify:
+    - "uci commit ddns"
+    - "Restart ddns"
+
+- name: update the ddns config sections
+  when: _ddns__sections_update | default([]) | length > 0
+  uci:
+    command: update
+    config: ddns
+    sections: "{{ _ddns__sections_update }}"
+  notify:
+    - "uci commit ddns"
+    - "Restart ddns"
+
+- name: enable ddns service
+  ansible.builtin.service:
+    name: ddns
+    enabled: true
+  notify:
+    - "Restart ddns"

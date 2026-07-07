@@ -1,0 +1,79 @@
+---
+
+- hosts: routers
+  become: true
+  vars_files:
+    - openwrt.yml
+  vars:
+    debug_print: false
+  roles:
+    - openwrt-settings
+  tags:
+    - routers
+
+- hosts: frp
+  become: true
+  any_errors_fatal: true
+  max_fail_percentage: 0
+  vars_files:
+    - frp.yml
+  vars:
+    debug_print: false
+  roles:
+    - frp
+  tags:
+    - frp
+
+- hosts: web
+  become: true
+  any_errors_fatal: true
+  max_fail_percentage: 0
+  vars_files:
+    - web.yml
+  vars:
+    debug_print: false
+  roles:
+    - nginx
+    - docker-registry
+  tags:
+    - web
+
+- hosts: xray
+  become: true
+  any_errors_fatal: true
+  max_fail_percentage: 0
+  vars_files:
+    - xray.yml
+  vars:
+    debug_print: false
+  roles:
+    - xray
+  tags:
+    - xray
+
+- hosts: wireguard
+  become: true
+  any_errors_fatal: true
+  max_fail_percentage: 0
+  vars_files:
+    - xray.yml
+  vars:
+    debug_print: false
+  roles:
+    - wireguard
+  tags:
+    - wireguard
+
+# local docker dns addr depends on wireguard ip addr
+- hosts: dns
+  become: true
+  any_errors_fatal: true
+  max_fail_percentage: 0
+  vars_files:
+    - dns.yml
+  vars:
+    debug_print: false
+  roles:
+    - dns
+  tags:
+    - dns

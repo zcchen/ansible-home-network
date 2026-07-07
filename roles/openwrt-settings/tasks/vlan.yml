@@ -1,0 +1,386 @@
+---
+
+- name: Combines the predefined vlan interfaces
+  with_items: "{{ extra_vlans }}"
+  ansible.builtin.set_fact:
+    _openwrt__extra_vlan_interfaces: "{{ _openwrt__extra_vlan_interfaces | default([]) + [interface] }}"
+  vars:
+    interface: "{{ item.interface }}"
+
+# Get current network config via uci
+- name: Get the current network config
+  uci:
+    command: show
+    config: network
+  register: _openwrt__uci_network
+
+# - name: debug show _openwrt__uci_network
+#   when: debug_print | default(false)
+#   debug:
+#     msg: "{{ _openwrt__uci_network }}"
+
+- name: "Get the data from uci result: lan_ports from network.@device[], sections of network.@bridge-vlan[]"
+  with_dict: "{{ _openwrt__uci_network.uci['network'] }}"
+  loop_control:
+    label: "{{ {'section': k, 'type': v.type} }}"
+  ansible.builtin.set_fact:
+    _openwrt__lan_ports: "{{ (_openwrt__lan_ports | default([]) + ports) | unique }}"
+    _openwrt__br_vlan_sections: "{{ _openwrt__br_vlan_sections | default({}) | combine(section_br_vlan) }}"
+    _openwrt__vlan_dev_sections: "{{ _openwrt__vlan_dev_sections | default({}) | combine(section_vlan_dev) }}"
+    _openwrt__lan_base_sections: "{{ _openwrt__lan_base_sections | default({}) | combine(section_lan_base) }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    cond__lan_ports: "{{ v.type == 'device' and v.options.name | default('') == 'br-lan' and 'ports' in v.options }}"
+    ports: "{{ v.options.ports if cond__lan_ports else [] }}"
+    cond__br_vlan_sections: "{{ v.type == 'bridge-vlan' }}"
+    section_br_vlan: "{{ {k: v} if cond__br_vlan_sections else {} }}"
+    cond__vlan_dev_sections: "{{ v.type == 'interface' and k in _openwrt__extra_vlan_interfaces }}"
+    section_vlan_dev: "{{ {k: v} if cond__vlan_dev_sections else {} }}"
+    cond__lan_base_sections: "{{ v.type == 'interface' and k == base_vlan.interface }}"
+    section_lan_base: "{{ {k: v} if cond__lan_base_sections else {} }}"
+
+# Get current firewall config via uci
+- name: Get the current firewall config
+  uci:
+    command: show
+    config: firewall
+  register: _openwrt__uci_firewall
+
+# - name: debug show _openwrt__uci_firewall
+#   debug:
+#     msg: "{{ _openwrt__uci_firewall }}"
+
+- name: "Get the data from uci result related to lanX: sections of firewall.@rule[], firewall.@@forwarding[] & firewall.@zone[]"
+  with_dict: "{{ _openwrt__uci_firewall.uci['firewall'] }}"
+  loop_control:
+    label: "{{ {'section': k, 'type': v.type} }}"
+  ansible.builtin.set_fact:
+    _openwrt__fw_rules: "{{ _openwrt__fw_rules | default({}) | combine(section_rule_lanX) }}"
+    _openwrt__fw_forwardings: "{{ _openwrt__fw_forwardings | default({}) | combine(section_fwd_lanX) }}"
+    _openwrt__fw_zones: "{{ _openwrt__fw_zones | default({}) | combine(section_zone_lanX) }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    cond__rule_lanX: "{{ v.type == 'rule' and (
+      v.options.src | default('') in _openwrt__extra_vlan_interfaces or
+      v.options.dest | default('') in _openwrt__extra_vlan_interfaces) }}"
+    section_rule_lanX: "{{ {k: v} if cond__rule_lanX else {} }}"
+    cond__fwd_lanX: "{{ v.type == 'forwarding' and (
+      v.options.src | default('') in _openwrt__extra_vlan_interfaces or
+      v.options.dest | default('') in _openwrt__extra_vlan_interfaces) }}"
+    section_fwd_lanX: "{{ {k: v} if cond__fwd_lanX else {} }}"
+    cond__zone_lanX: "{{ v.type == 'zone' and v.options.network | default('') in _openwrt__extra_vlan_interfaces }}"
+    section_zone_lanX: "{{ {k: v} if cond__zone_lanX else {} }}"
+
+# Raise error if basic conditions unmatched.
+- ansible.builtin.fail:
+    msg: "Failed to get lan_ports which are essential for vlan id settings."
+  when:
+    - _openwrt__lan_ports | default([]) | length == 0 or _openwrt__lan_base_sections | default({}) | length == 0
+
+- name: debug print current related sections
+  when: debug_print | default(false)
+  block:
+    - name: debug print _openwrt__lan_ports
+      debug:
+        msg: "{{ _openwrt__lan_ports }}"
+    - name: debug print _openwrt__br_vlan_sections
+      debug:
+        msg: "{{ _openwrt__br_vlan_sections | default({}) }}"
+    - name: debug print _openwrt__vlan_dev_sections
+      debug:
+        msg: "{{ _openwrt__vlan_dev_sections | default({}) }}"
+    - name: debug print _openwrt__lan_base_sections
+      debug:
+        msg: "{{ _openwrt__lan_base_sections | default({}) }}"
+    - name: debug print _openwrt__fw_rules
+      debug:
+        msg: "{{ _openwrt__fw_rules | default({}) }}"
+    - name: debug print _openwrt__fw_forwardings
+      debug:
+        msg: "{{ _openwrt__fw_forwardings | default({}) }}"
+    - name: debug print _openwrt__fw_zones
+      debug:
+        msg: "{{ _openwrt__fw_zones | default({}) }}"
+
+# Generate the uci commands
+- name: Setup the network.@bridge-vlan[] for uci command (delete then create)
+  when:
+    - extra_vlans | length > 0
+    - _openwrt__br_vlan_sections | length != extra_vlans | length + 1
+  ansible.builtin.set_fact:
+    _openwrt__uci_sections__br_vlan__del: >-
+      {{ _openwrt__br_vlan_sections | dict2items | map('json_query', '{name: key}') | list }}
+    _openwrt__uci_sections__br_vlan__add: "{{ [uci_sections_br_vlan_base] + uci_sections_br_vlan_extra }}"
+  vars:
+    uci_sections_br_vlan_base:   # config.@section[], no name required
+      type: bridge-vlan
+      options:
+        device: br-lan
+        ports: "{{ _openwrt__lan_ports }}"
+        vlan: 1
+    uci_sections_br_vlan_extra_base:   # config.@section[], no name required
+      type: bridge-vlan
+      options:
+        device: br-lan
+        ports: "{{ _openwrt__lan_ports | map('regex_replace', '$', ':t') | list }}"
+        vlan: 0     # to be replace later
+    uci_sections_br_vlan_extra: >-
+      {{ [uci_sections_br_vlan_extra_base]
+            | product(extra_vlans | map('json_query', '{"options": {"vlan": vlan_id}}') )
+            | map('combine', recursive=true) | list
+      }}
+    # NOTE: put the base obj first, then product it with the replacement one, finally combine them to list.
+
+- name: Setup the network.@bridge-vlan[] for uci command (update)
+  when:
+    - extra_vlans | length > 0
+    - _openwrt__br_vlan_sections | length == extra_vlans | length + 1
+  ansible.builtin.set_fact:
+    _openwrt__uci_sections__br_vlan__mod: >-
+      {{ _openwrt__br_vlan_sections
+          | dict2items | map('json_query', '[value, {name: key}]') | map('combine')
+          | zip([uci_sections_br_vlan_base] + uci_sections_br_vlan_extra)
+          | map('combine', recursive=true) | list
+      }}
+    # NOTE: convert the current sections to list, then zip it with the replacement one, finally combine them
+  vars:
+    uci_sections_br_vlan_base:   # config.@section[], no name required
+      type: bridge-vlan
+      options:
+        device: br-lan
+        ports: "{{ _openwrt__lan_ports }}"
+        vlan: "{{ base_vlan.vlan_id }}"
+    uci_sections_br_vlan_extra_base:   # config.@section[], no name required
+      type: bridge-vlan
+      options:
+        device: br-lan
+        ports: "{{ _openwrt__lan_ports | map('regex_replace', '$', ':t') | list }}"
+        vlan: 0     # to be replace later
+    uci_sections_br_vlan_extra: >-
+      {{ [uci_sections_br_vlan_extra_base]
+            | product(extra_vlans | map('json_query', '{"options": {"vlan": vlan_id}}') )
+            | map('combine', recursive=true) | list
+      }}
+
+- name: setup the base network interface, uci command sections
+  when: extra_vlans | length > 0
+  ansible.builtin.set_fact:
+    _openwrt__uci_sections__lan_dev_base: "{{ [elem] }}"
+  vars:
+    elem:
+      name: "{{ base_vlan.interface }}"   # default is 'network.lan' section
+      options:
+        device: "br-lan.{{ base_vlan.vlan_id }}"
+
+- name: setup the extra network interfaces and their firewall, uci command sections
+  when: extra_vlans | length > 0
+  with_items: "{{ extra_vlans }}"
+  ansible.builtin.set_fact:
+    _openwrt__uci_sections__lan_dev_extra__add: "{{ _openwrt__uci_sections__lan_dev_extra__add | default([]) + elem_add }}"
+    _openwrt__uci_sections__lan_dev_extra__mod: "{{ _openwrt__uci_sections__lan_dev_extra__mod | default([]) + elem_mod }}"
+  vars:
+    cond__lan_exists: "{{ item.interface in _openwrt__vlan_dev_sections }}"
+    elem_add: "{{ [elem] if not cond__lan_exists else [] }}"
+    elem_mod: "{{ [elem] if cond__lan_exists else [] }}"
+    elem: "{{ base | combine(netconf, recursive=True) }}"
+    base:
+      name: "{{ item.interface }}"
+      options:
+        device: "br-lan.{{ item.vlan_id }}"
+    netconf:
+      options: "{{ item.network }}"
+
+- name: setup firewall.@rule[], firewall.@zone[] & firewall.@forwarding[] for extra_vlans
+  when:
+    - extra_vlans | length > 0
+  ansible.builtin.set_fact:
+    _openwrt__uci_sections__fw_rule__del: "{{ sections_rule_del if cond__fw_rule_del_first else [] }}"
+    _openwrt__uci_sections__fw_rule__add: "{{ sections_rule_add if cond__fw_rule_del_first else [] }}"
+    _openwrt__uci_sections__fw_rule__mod: "{{ sections_rule_mod if not cond__fw_rule_del_first else [] }}"
+    _openwrt__uci_sections__fw_zone__del: "{{ sections_zone_del if cond__fw_zone_del_first else [] }}"
+    _openwrt__uci_sections__fw_zone__add: "{{ sections_zone_add if cond__fw_zone_del_first else [] }}"
+    _openwrt__uci_sections__fw_zone__mod: "{{ sections_zone_mod if not cond__fw_zone_del_first else [] }}"
+    _openwrt__uci_sections__fw_fwd__del: "{{ sections_fwd_del if cond__fw_fwd_del_first else [] }}"
+    _openwrt__uci_sections__fw_fwd__add: "{{ sections_fwd_add if cond__fw_fwd_del_first else [] }}"
+    _openwrt__uci_sections__fw_fwd__mod: "{{ sections_fwd_mod if not cond__fw_fwd_del_first else [] }}"
+  vars:
+    cond__fw_rule_del_first: "{{ _openwrt__fw_rules | length != extra_vlans | length }}"
+    sections_rule_del: "{{ _openwrt__fw_rules | dict2items | map('json_query', '{name: key}') | list }}"
+    _sections_rule: >-
+      [{% for item in extra_vlans %}
+      {
+        "type": "rule",
+        "options": {
+          "name": "Allow-{{ item.interface | upper }}",
+          "src": "{{ item.interface }}",
+          "dest_port": "53 67 68",
+          "proto": ["tcp", "udp", "icmp"],
+          "target": "ACCEPT"
+        }
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}]
+    sections_rule_add: "{{ _sections_rule | from_yaml }}"
+    sections_rule_mod: >-
+      {{ _openwrt__fw_rules | dict2items | map('json_query', '[value, {name: key}]') | map("combine")
+          | zip(sections_rule_add) | map("combine", recursive=true) | list }}
+    cond__fw_zone_del_first: "{{ _openwrt__fw_zones | length != extra_vlans | length }}"
+    sections_zone_del: "{{ _openwrt__fw_zones | dict2items | map('json_query', '{name: key}') | list }}"
+    _sections_zone: >-
+      [{% for item in extra_vlans %}
+      {
+        "type": "zone",
+        "options": {
+          "forward": "REJECT",
+          "input": "REJECT",
+          "output": "ACCEPT",
+          "name": "{{ item.interface }}",
+          "network": "{{ item.interface }}"
+        }
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}]
+    sections_zone_add: "{{ _sections_zone | from_yaml }}"
+    sections_zone_mod: >-
+      {{ _openwrt__fw_zones | dict2items | map('json_query', '[value, {name: key}]') | map("combine")
+          | zip(sections_zone_add) | map("combine", recursive=True) | list }}
+    cond__fw_fwd_del_first: "{{ _openwrt__fw_forwardings | length != extra_vlans | length }}"
+    sections_fwd_del: "{{ _openwrt__fw_forwardings | dict2items | map('json_query', '{name: key}') | list }}"
+    _sections_fwd: >-
+      [{% for item in extra_vlans %}
+      {
+        "type": "forwarding",
+        "options": {
+          "src": "{{ item.interface }}",
+          "dest": "wan"
+        }
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}]
+    sections_fwd_add: "{{ _sections_fwd | from_yaml }}"
+    sections_fwd_mod: >-
+      {{ _openwrt__fw_forwardings | dict2items | map('json_query', '[value, {name: key}]') | map("combine")
+          | zip(sections_fwd_add) | map("combine", recursive=True) | list}}
+
+- name: debug print the updating sections
+  when: debug_print | default(false)
+  block:
+    - name: debug print _openwrt__uci_sections__br_vlan__del
+      debug:
+        msg: "{{ _openwrt__uci_sections__br_vlan__del | default([]) }}"
+    - name: debug print _openwrt__uci_sections__br_vlan__add
+      debug:
+        msg: "{{ _openwrt__uci_sections__br_vlan__add | default([]) }}"
+    - name: debug print _openwrt__uci_sections__br_vlan__mod
+      debug:
+        msg: "{{ _openwrt__uci_sections__br_vlan__mod | default([]) }}"
+    - name: debug print _openwrt__uci_sections__lan_dev_base
+      debug:
+        msg: "{{ _openwrt__uci_sections__lan_dev_base | default([]) }}"
+    - name: debug print _openwrt__uci_sections__lan_dev_extra__add
+      debug:
+        msg: "{{ _openwrt__uci_sections__lan_dev_extra__add | default([]) }}"
+    - name: debug print _openwrt__uci_sections__lan_dev_extra__mod
+      debug:
+        msg: "{{ _openwrt__uci_sections__lan_dev_extra__mod | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_rule__del
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_rule__del | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_rule__add
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_rule__add | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_rule__mod
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_rule__mod | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_zone__del
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_zone__del | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_zone__add
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_zone__add | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_zone__mod
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_zone__mod | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_fwd__del
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_fwd__del | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_fwd__add
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_fwd__add | default([]) }}"
+    - name: debug print _openwrt__uci_sections__fw_fwd__mod
+      debug:
+        msg: "{{ _openwrt__uci_sections__fw_fwd__mod | default([]) }}"
+
+# Execute the uci command
+- name: Execute the uci command for network config
+  notify:
+    - uci commit network
+    - Restart network
+  block:
+    - name: Execute the uci command for network config, del
+      when: sections | default([]) | length > 0
+      uci:
+        command: delete
+        config: network
+        sections: "{{ sections }}"
+      vars:
+        sections: "{{ _openwrt__uci_sections__br_vlan__del | default([]) }}"
+    - name: Execute the uci command for network config, add
+      when: sections | default([]) | length > 0
+      uci:
+        command: create
+        config: network
+        sections: "{{ sections }}"
+      vars:
+        sections: >-
+          {{ _openwrt__uci_sections__br_vlan__add | default([])
+             + _openwrt__uci_sections__lan_dev_extra__add | default([]) }}
+    - name: Execute the uci command for network config, modify
+      when: sections | default([]) | length > 0
+      uci:
+        command: update
+        config: network
+        sections: "{{ sections }}"
+      vars:
+        sections: >-
+          {{ _openwrt__uci_sections__br_vlan__mod | default([])
+             + _openwrt__uci_sections__lan_dev_base | default([])
+             + _openwrt__uci_sections__lan_dev_extra__mod | default([]) }}
+
+- name: Execute the uci command for network config
+  notify:
+    - uci commit firewall
+    - Restart firewall
+  block:
+    - name: Execute the uci command for firewall config, del
+      when: sections | default([]) | length > 0
+      uci:
+        command: delete
+        config: firewall
+        sections: "{{ sections }}"
+      vars:
+        sections: >-
+          {{ _openwrt__uci_sections__fw_rule__del | default([])
+             + _openwrt__uci_sections__fw_zone__del | default([])
+             + _openwrt__uci_sections__fw_fwd__del | default([]) }}
+    - name: Execute the uci command for firewall config, add
+      when: sections | default([]) | length > 0
+      uci:
+        command: create
+        config: firewall
+        sections: "{{ sections }}"
+      vars:
+        sections: >-
+          {{ _openwrt__uci_sections__fw_rule__add | default([])
+             + _openwrt__uci_sections__fw_zone__add | default([])
+             + _openwrt__uci_sections__fw_fwd__add | default([]) }}
+    - name: Execute the uci command for firewall config, modify
+      when: sections | default([]) | length > 0
+      uci:
+        command: update
+        config: firewall
+        sections: "{{ sections }}"
+      vars:
+        sections: >-
+          {{ _openwrt__uci_sections__fw_rule__mod | default([])
+             + _openwrt__uci_sections__fw_zone__mod | default([])
+             + _openwrt__uci_sections__fw_fwd__mod | default([]) }}

@@ -1,0 +1,55 @@
+---
+
+- name: Raise error if it is NOT the router.
+  ansible.builtin.fail:
+    msg: "openwrt setting role is available for OpenWrt ONLY."
+  when:
+    - ansible_facts["os_family"] != "OpenWrt"
+
+- import_tasks: cron.yml
+  vars:
+    cron_jobs: "{{ openwrt__crons | default({} )}}"
+    cron_jobs_keep: "{{ openwrt__crons_keeps | default([]) }}"
+    cron_default:
+      minute: "*"
+      hour: "*"
+      day: "*"
+      month: "*"
+      weekday: "*"
+      job:    # default is none, if none, error will be raised
+
+- import_tasks: ddns.yml
+  vars:
+    ddns__hosts: "{{ openwrt__ddns_hosts | default({}) }}"
+    ddns__host_default: "{{ _host_default_base | combine(openwrt__ddns_host_default) }}"
+    _host_default_base:
+      lookup_host: ""
+      use_ipv6: 0
+      enabled: 0
+      service_name: ""
+      domain: ""
+      username: ""
+      password: ""
+      use_https: 0
+      ip_source: 'interface'
+      interface: "lo"
+      ip_interface: "lo"
+      use_syslog: 2
+      check_unit: "minutes"
+      force_unit: "minutes"
+      retry_unit: "minutes"
+      cacert: '/etc/ssl/certs'
+      check_interval: 5
+      force_interval: 5
+      force_ipversion: 1
+
+- import_tasks: vlan.yml
+  when: extra_vlans | default([]) | length > 0
+  vars:
+    extra_vlans: "{{ openwrt__extra_vlans | default([]) }}"
+    base_vlan: "{{ openwrt__base_vlan }}"
+
+- import_tasks: dhcp_static.yml
+  when: dhcp_static_clients | default({}) | length > 0
+  vars:
+    dhcp_static_clients: "{{ openwrt__dhcp_static_clients | default({}) }}"

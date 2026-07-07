@@ -1,0 +1,17 @@
+---
+
+dnsmasq_dnsmasq_conf:
+  - |
+    port = 53
+    bind-dynamic
+    domain-needed
+    no-hosts
+    dns-forward-max=150
+    cache-size=1000
+    neg-ttl=3600
+    no-poll
+    all-servers
+    server = 1.1.1.1
+    server = 8.8.8.8
+    server = 8.8.4.4
+

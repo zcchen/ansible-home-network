@@ -1,0 +1,6 @@
+---
+
+ansible_ssh_host: "{{ __frp.router.B.addr }}"
+ansible_ssh_port: "{{ __frp.router.B.port }}"
+ansible_ssh_user: "{{ __login_router_ssh_user }}"
+ansible_ssh_pass: "{{ __login_router_ssh_passwd }}"

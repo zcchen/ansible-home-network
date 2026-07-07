@@ -1,0 +1,100 @@
+version: "3.7"
+
+services:
+  redis:
+    image: {{ _registry__docker.images.redis }}
+    restart: always
+    networks:
+      - registry
+
+  nginx:
+    image: {{ _registry__docker.images.nginx }}
+    restart: always
+    ports:
+      - "{{ registry__port }}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+{% for key in _registry__domain.ports.keys() %}
+      - registry-offical_{{ key }}
+      - registry-ui_{{ key }}
+{% endfor %}
+    networks:
+      - registry
+
+{% for key, value in _registry__domain.ports.items() %}
+  registry-offical_{{ key }}:
+    image: {{ _registry__docker.images.registry }}
+    volumes:
+      - {{ _registry__dir.data }}/{{ key }}:/var/lib/registry
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+      REGISTRY_PROXY_REMOTEURL: {{ value.remoteurl }}
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      REGISTRY_REDIS_ADDR: redis:6379
+    networks:
+      - registry
+    depends_on:
+      - redis
+
+  registry-ui_{{ key }}:
+    image: {{ _registry__docker.images.ui }}
+    restart: always
+    environment:
+      # ui settings
+      PORT: 80
+      ENABLE_DELETE_IMAGES: "false"
+      SECRET_KEY_BASE: "{{ _registry__secret.ui_keybase | default(lookup('community.general.random_string', length=6)) }}"
+      SORT_TAGS_BY: "version"
+      SORT_TAGS_ORDER: "desc"
+      # registry settings
+      DOCKER_REGISTRY_URL: http://registry-offical_{{ key }}:5000
+      NO_SSL_VERIFICATION: "true"
+      # path:
+      SCRIPT_NAME: "/browser"
+      RAILS_RELATIVE_URL_ROOT: "/browser"
+    depends_on:
+      - registry-offical_{{ key }}
+    networks:
+      - registry
+
+  registry-garbage-collect_{{ key }}:
+    image: {{ _registry__docker.images.registry }}
+    volumes:
+      - {{ _registry__dir.data }}/{{ key }}:/var/lib/registry
+      - ./garbage-collect.crontab:/var/spool/cron/crontabs/root:ro
+    restart: always
+    entrypoint: /usr/sbin/crond
+    command:
+      - "-f"
+      - "-L"
+      - "/dev/stdout"
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      - registry
+
+{% endfor %}
+  registry-cleanup:
+    image: {{ _registry__docker.images.cleanup }}
+    restart: always
+    entrypoint: /bin/sh
+    volumes:
+      - ./cleanup.sh:/cleanup.sh
+    depends_on:
+{% for key in _registry__domain.ports.keys() %}
+      - registry-offical_{{ key }}
+{% endfor %}
+    command:
+      - "-c"
+      - "/cleanup.sh"
+    networks:
+      - registry
+
+networks:
+  registry:
+    ipam:
+      driver: default
+      config:
+        - subnet: {{ _registry__docker.network.subnet }}

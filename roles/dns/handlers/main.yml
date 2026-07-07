@@ -1,0 +1,11 @@
+- name: uci commit dhcp
+  uci:
+    command: commit
+    config: dhcp
+
+- name: Restart dnsmasq (initV)
+  ansible.builtin.service:
+    name: dnsmasq
+    state: restarted
+  listen: "Restart dnsmasq"
+

@@ -1,0 +1,20 @@
+---
+
+dns:
+  children:
+    dns_lan:
+      hosts:
+        router.A.lan:
+        router.B.lan:
+    dns_port:
+      hosts:
+        vps.A:
+        vps.B:
+
+dns_lan:
+  vars:
+    dnsmasq_dnsmasq_d_files_present: "{{ __dns__configs.router }}"
+
+dns_port:
+  vars:
+    dnsmasq_dnsmasq_d_files_present: "{{ __dns__configs.port }}"

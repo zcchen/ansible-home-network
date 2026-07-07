@@ -1,0 +1,65 @@
+---
+
+- name: "Set Wireguard facts those need for [peer] section."
+  ansible.builtin.set_fact:
+    _wg__address: "{{ wireguard__address }}"
+    _wg__port: "{{ wireguard__port }}"
+    _wg__endpoint: "{{ wireguard__endpoint if wireguard__endpoint else ansible_ssh_host }}"
+    _wg__allowed_ips: "{{ [addr] + wireguard__allowed_ips }}"
+    _wg__persistent_keepalive: "{{ wireguard__persistent_keepalive }}"
+    _wg__preshared_key: "{{ wireguard__preshared_key }}"
+  vars:
+    addr: "{{ wireguard__address.split('/')[0] }}/{{ 128 if ':' in wireguard__address else 32 }}"
+
+- name: debug print _wg__endpoint
+  when: debug_print
+  debug:
+    msg: "{{ _wg__endpoint }}"
+- name: debug print _wg__allowed_ips
+  when: debug_print
+  debug:
+    msg: "{{ _wg__allowed_ips }}"
+
+- name: Prepare the xray plugin settings
+  ansible.builtin.set_fact:
+    _wg__plugin_xray_tunnels: "{{ _wg__plugin_xray_tunnels | default({}) | combine({item.key: tun}) }}"
+  with_dict: "{{ wireguard__plugin_xray_tunnels }}"
+  vars:
+    # t: "{{ {'remote_port': hostvars[item.key].wireguard__port} }}"
+    t: "{{ {'remote_port': hostvars[item.key]._wg__port} }}"
+    tun: "{{ wireguard__plugin_xray_tunnel_default | combine(t, item.value, recursive=True) }}"
+  failed_when:
+    - not tun.local_port or not tun.remote_port or not tun.proxy.port or not tun.proxy.method or not tun.proxy.streamSettings
+  loop_control:
+    label: "{{ {'peer': item.key, 'local_port': tun.local_port, 'remote_port': tun.remote_port} }}"
+
+- name: debug print _wg__plugin_xray_tunnels
+  debug:
+    msg: "{{ _wg__plugin_xray_tunnels }}"
+  when:
+    - _wg__plugin_xray_tunnels is defined
+    - debug_print
+
+- name: Prepare the xray plugin config file
+  ansible.builtin.set_fact:
+    _wg__plugin_xray_config:
+      wireguard_tunnels:
+        inbounds: "{{ _wg__plugin_xray_config.wireguard_tunnels.inbounds | default([]) + [inbound] }}"
+        outbounds: "{{ _wg__plugin_xray_config.wireguard_tunnels.outbounds | default([]) + [outbound] }}"
+        routing:
+          rules: "{{ _wg__plugin_xray_config.wireguard_tunnels.routing.rules | default([]) + [routing_rule] }}"
+  with_dict: "{{ _wg__plugin_xray_tunnels | default({}) }}"
+  loop_control:
+    loop_var: peer_item
+    label: "{{ {'peer': peer_item.key, 'local_port': peer_item.value.local_port, 'remote_port': peer_item.value.remote_port} }}"
+  vars:
+    inbound: "{{ wireguard__plugin_xray_snippets.inbound }}"
+    outbound: "{{ wireguard__plugin_xray_snippets.outbound[peer_item.value.proxy.method] }}"
+    routing_rule: "{{ wireguard__plugin_xray_snippets.routing_rule }}"
+
+- name: debug print _wg__plugin_xray_config
+  when:
+    - _wg__plugin_xray_config is defined
+    - debug_print
+  debug:
+    msg: "{{ _wg__plugin_xray_config }}"

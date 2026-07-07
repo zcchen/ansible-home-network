@@ -1,0 +1,66 @@
+---
+
+- name: Set _xray__configs var
+  ansible.builtin.set_fact:
+    _xray__configs: "{{ _xray__configs | default({}) | combine(config) }}"
+  with_dict: "{{ xray__configs }}"
+  loop_control:
+    label: "{{ item.key }}"
+  vars:
+    config: "{{ {item.key: xray__config_elem_default | combine(xray__config_elem, item.value, recursive=true) } }}"
+
+- name: generate the xray config file
+  with_dict: "{{ _xray__configs }}"
+  ansible.builtin.copy:
+    dest: "/etc/xray/{{ item.key }}.json"
+    content: "{{ item.value | to_nice_json }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: _xray__configs_output
+  notify:
+    - Test xray
+
+- name: "Enable all xray@ services"
+  when: ansible_service_mgr == 'systemd'
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    name: "xray@{{ item.key }}"
+    # state: started
+    enabled: true
+  with_dict: "{{ _xray__configs }}"
+  loop_control:
+    label: "{{ item.key }}"
+  notify:
+    - Restart all xray
+
+- name: "Setup the /etc/init.d/xray for OpenWrt"
+  when: ansible_facts['os_family'] == 'OpenWrt'
+  block:
+  - name: "Generate '/etc/init.d/xray' to OpenWrt device"
+    ansible.builtin.template:
+      src: xray.j2
+      dest: "/etc/init.d/xray"
+      owner: root
+      group: root
+      mode: "0755"
+    notify:
+      - Restart all xray
+    register: xray_service_file
+  - name: Kill all the previous xray processes
+    when: xray_service_file is changed
+    block:
+    - name: disable the previous service
+      ansible.builtin.shell: "/etc/init.d/xray disable"
+    - name: stop the previous service
+      ansible.builtin.shell: "/etc/init.d/xray stop"
+    - name: kill the previous process
+      ansible.builtin.shell: "killall {{ _xray__binary_path | basename }}"
+      changed_when: false
+      failed_when: false
+  - name: "Enable the /etc/init.d/xray service"
+    ansible.builtin.service:
+      name: "xray"
+      # state: started
+      enabled: true
+    notify:
+      - Restart all xray

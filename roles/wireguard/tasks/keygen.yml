@@ -1,0 +1,72 @@
+---
+
+- name: Try to get private key for Linux Machine.
+  when:
+    - ansible_facts['os_family'] != 'OpenWrt'
+    - not wireguard__private_key
+  block:
+    - name: "check config file '{{ _wg__confdir.path }}/{{ wireguard__interface }}.conf' existing."
+      ansible.builtin.stat:
+        path: "{{ _wg__confdir.path }}/{{ wireguard__interface }}.conf"
+      register: _wg__conf_file_state
+    - name: "Get config content from '{{ _wg__confdir.path }}/{{ wireguard__interface }}.conf'"
+      when: _wg__conf_file_state.stat.exists
+      ansible.builtin.slurp:
+        src: "{{ _wg__confdir.path }}/{{ wireguard__interface }}.conf"
+      register: _wg__conf_content
+    - name: Set private key fact from Linux config file
+      when: _wg__conf_file_state.stat.exists
+      ansible.builtin.set_fact:
+        _wg__private_key: "{{ _wg__conf_content['content'] | b64decode | regex_findall('PrivateKey = (.*)') | first }}"
+      no_log: '{{ hide_log }}'
+
+- name: Get private key for OpenWrt Machine.
+  when:
+    - ansible_facts['os_family'] == 'OpenWrt'
+    - not wireguard__private_key
+    - wireguard__interface in _openwrt__network_conf.keys()
+  ansible.builtin.set_fact:
+    _wg__private_key: "{{ _openwrt__network_conf[wireguard__interface].options.private_key }}"
+  no_log: '{{ hide_log }}'
+
+- name: Set private key fact from predefined variable
+  when:
+    - wireguard__private_key is string
+    - wireguard__private_key | length > 0
+  ansible.builtin.set_fact:
+    _wg__private_key: "{{ wireguard__private_key }}"
+  no_log: '{{ hide_log }}'
+
+- name: Generate private key since not defined
+  when:
+    - _wg__private_key is not defined
+  no_log: '{{ hide_log }}'
+  block:
+    - name: Generate WireGuard private key
+      ansible.builtin.shell: "wg genkey"
+      register: _wg__private_key_cmd_result
+      changed_when: false
+    - name: Set private key fact from just generating result
+      ansible.builtin.set_fact:
+        _wg__private_key: "{{ _wg__private_key_cmd_result.stdout }}"
+
+- name: Calc public key by private key
+  block:
+    - name: Generate WireGuard private key
+      ansible.builtin.command: "wg pubkey"
+      args:
+        stdin: "{{ _wg__private_key }}"
+      register: _wg__public_key_cmd_result
+      changed_when: false
+      no_log: '{{ hide_log }}'
+    - name: Set public key fact
+      ansible.builtin.set_fact:
+        _wg__public_key: "{{ _wg__public_key_cmd_result.stdout }}"
+
+# - name: debug print _wg__private_key
+#   debug:
+#     msg: "{{ _wg__private_key }}"
+# - name: debug print _wg__public_key
+#   debug:
+#     msg: "{{ _wg__public_key }}"
+

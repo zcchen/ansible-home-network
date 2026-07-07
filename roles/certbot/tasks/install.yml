@@ -1,0 +1,7 @@
+---
+
+- name: Install Certbot.
+  ansible.builtin.package:
+    update_cache: true
+    name: certbot
+    state: present

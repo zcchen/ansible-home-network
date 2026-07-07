@@ -1,0 +1,131 @@
+---
+
+- name: install NGINX program
+  ansible.builtin.package:
+    update_cache: true
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - nginx
+
+- name: combine NGINX vars and set facts
+  ansible.builtin.set_fact:
+    _nginx__main: "{{ nginx__main_default | combine(nginx__main | default({}), recursive=true) }}"
+    _nginx__events: "{{ nginx__events_default | combine(nginx__events | default({}), recursive=true) }}"
+    _nginx__http_core: "{{ nginx__http_core_default | combine(nginx__http_core | default({}), recursive=true) }}"
+    _nginx__stream_core: "{{ nginx__stream_core_default | combine(nginx__stream_core | default({}), recursive=true) }}"
+    _nginx__snippet_files: "{{ nginx__snippet_files_default | combine(nginx__snippet_files | default({}), recursive=true) }}"
+    _nginx__http_config_files: "{{ nginx__http_config_files_default | combine(nginx__http_config_files | default({}), recursive=true) }}"
+    _nginx__http_site_files: "{{ nginx__http_site_files_default | combine(nginx__http_site_files | default({}), recursive=true) }}"
+
+- name: Configurate NGINX with basic settings
+  block:
+    - name: "Create user <{{ _nginx__main.user }}> to run nginx"
+      ansible.builtin.user:
+        name: "{{ _nginx__main.user }}"
+        home: "{{ nginx__user_home }}"
+        shell: /bin/nologin
+        comment: "nginx user"
+        state: present
+    - name: ensure config folders are created.
+      ansible.builtin.file:
+        dest: "{{ item }}"
+        owner: root
+        group: root
+        mode: "0755"
+        state: directory
+      with_items:
+        - "/etc/nginx/sites-enabled/"
+        - "/etc/nginx/sites-available/"
+        - "/etc/nginx/conf.d/"
+
+- name: Get current datetime for backup naming.
+  ansible.builtin.set_fact:
+    _nginx__backup_datetime: "{{ now(fmt='%Y%m%d%H%M%S') if nginx__conf_need_backup else '' }}"
+  # when: "nginx__conf_need_backup | default(false)"
+
+- name: "Configurate the NGINX base config </etc/nginx/nginx.conf>"
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "/etc/nginx/nginx.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: "{{ nginx__conf_need_backup | default(false) }}"
+  vars:
+    events_dict: "{{ nginx__events_default | combine(nginx__events | default({}), recursive=true) }}"
+    http_core_dict: "{{ nginx__http_core_default | combine(nginx__http_core | default({}), recursive=true) }}"
+    stream_dict: "{{ nginx__stream_default | combine(nginx__stream | default({}), recursive=true) }}"
+  notify:
+    - Test nginx
+    - Restart nginx
+
+- name: "Configurate the NGINX http config files in </etc/nginx/conf.d/>"
+  block:
+    - name: "Backup /etc/nginx/conf.d/ to /etc/nginx/conf.d_{{ _nginx__backup_datetime }}/"
+      when: "nginx__conf_need_backup | default(false)"
+      ansible.builtin.copy:
+        src: /etc/nginx/conf.d/
+        dest: "/etc/nginx/conf.d_{{ _nginx__backup_datetime }}"
+        remote_src: true
+    - name: Generate the files in /etc/nginx/conf.d/
+      ansible.builtin.copy:
+        dest: "/etc/nginx/conf.d/{{ item.key }}.conf"
+        content: "{{ item.value }}"
+        mode: "0644"
+        owner: root
+        group: root
+      with_dict: "{{ _nginx__http_config_files }} "
+      loop_control:
+        label: "{{ item.key }}.conf"
+      notify:
+        - Test nginx
+        - Reload nginx
+
+- name: "Configurate the NGINX site config files in </etc/nginx/sites-available/>"
+  block:
+    - name: "remove /etc/nginx/sites-enabled/default, /etc/nginx/sites-available/default"
+      ansible.builtin.file:
+        dest: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/nginx/sites-available/default
+        - /etc/nginx/sites-enabled/default
+    - name: "backup /etc/nginx/sites-available/ to /etc/nginx/sites-available_{{ _nginx__backup_datetime }}/"
+      when: "nginx__conf_need_backup | default(false)"
+      ansible.builtin.copy:
+        src: /etc/nginx/sites-available/
+        dest: "/etc/nginx/sites-available_{{ _nginx__backup_datetime }}"
+        remote_src: true
+    - name: Generate the files in /etc/nginx/sites-available/
+      ansible.builtin.copy:
+        dest: "/etc/nginx/sites-available/{{ item.key }}.conf"
+        content: "{{ item.value }}"
+        mode: "0644"
+        owner: root
+        group: root
+      with_dict: "{{ _nginx__http_site_files }} "
+      loop_control:
+        label: "{{ item.key }}.conf"
+      notify:
+        - Test nginx
+        - Reload nginx
+    - name: link files from /etc/nginx/sites-available/ to /etc/nginx/sites-enabled/
+      ansible.builtin.file:
+        src: "../sites-available/{{ item.key }}.conf"
+        dest: "/etc/nginx/sites-enabled/{{ item.key }}.conf"
+        # path: "/etc/nginx/sites-enabled/"
+        state: link
+      with_dict: "{{ _nginx__http_site_files }} "
+      loop_control:
+        label: "{{ item.key }}.conf"
+      notify:
+        - Test nginx
+        - Reload nginx
+
+- name: Enable nginx service
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+  notify:
+    - Restart nginx

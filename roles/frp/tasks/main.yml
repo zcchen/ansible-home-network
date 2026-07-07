@@ -1,0 +1,56 @@
+---
+
+- name: set fact for frp roles
+  ansible.builtin.set_fact:
+    _frp__as_server: "{{ frp__is_server | bool == true }}"
+    _frp__as_client: "{{ frp__clients | default([]) | length > 0 }}"
+
+- name: check frp is installed.
+  include_tasks: check-command.yml
+  with_items:
+    - "{{ {'bin': frp__client_cmd, 'condition': _frp__as_client, 'version': frp__client_version_cmd} }}"
+    - "{{ {'bin': frp__server_cmd, 'condition': _frp__as_server, 'version': frp__server_version_cmd} }}"
+  when: item.condition
+  vars:
+    bin: "{{ item.bin }}"
+    bin_version_cmd: "{{ item.version }}"
+    _failed_if_binary_not_found: "{{ ansible_facts['os_family'] == 'OpenWrt' }}"
+
+- name: Install the frp
+  when:
+    - bin_path == "" or frp__version != _bin__version | default("")
+    - ansible_facts['os_family'] != 'OpenWrt'
+  vars:
+    bins: "{{ [] + [frp__server_cmd] if _frp__as_server else [] + [frp__client_cmd] if _frp__as_client else [] }}"
+  block:
+    - name: prepare the directories for frp
+      ansible.builtin.file:
+        path: /usr/local/bin/
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+    - import_tasks: download.yml
+    - name: install the frp binaries
+      ansible.builtin.copy:
+        src: "/tmp/frp/frp_{{ frp__version }}_linux_{{ _frp__arch }}/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: '0755'
+        remote_src: true
+      with_items: "{{ bins }}"
+    - include_tasks: check-command.yml
+      with_items: "{{ bins }}"
+      vars:
+        bin: "{{ item }}"
+        bin_version_cmd: "{{ frp__client_version_cmd if _frp__as_client  else frp__server_version_cmd }}"
+        _failed_if_binary_not_found: true
+
+- name: combine the frp__auth configs
+  ansible.builtin.set_fact:
+     _frp__auth: "{{ frp__auth_default | combine(frp__auth, recursive=true) }}"
+
+- import_tasks: client.yml
+  when: frp__clients | default([]) | length > 0
+
+- import_tasks: server.yml
+  when: frp__is_server | bool == true

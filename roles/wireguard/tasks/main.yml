@@ -1,0 +1,101 @@
+---
+
+- name: (Debian) Install WireGuard packages
+  when: ansible_distribution  == 'Debian'
+  ansible.builtin.apt:
+    name:
+      - wireguard
+      - iptables
+    state: present
+
+- include_tasks: check-command.yml
+  vars:
+    bin: wg
+    _failed_if_binary_not_found: "{{ ansible_facts['os_family'] == 'OpenWrt' }}"
+
+- name: Enable WireGuard kernel module
+  community.general.modprobe:
+    name: wireguard
+    state: present
+  register: _wireguard__register_module_enabled
+  retries: 10
+  delay: 10
+  until: _wireguard__register_module_enabled is succeeded
+  failed_when: _wireguard__register_module_enabled is failure
+
+- name: combine and set wg_confdir
+  when: ansible_facts['os_family'] != 'OpenWrt'
+  ansible.builtin.set_fact:
+   _wg__confdir: "{{ wireguard__confdir_default | combine(wireguard__confdir) }}"
+
+- name: Get OpenWrt network configs via uci
+  when: ansible_facts['os_family'] == 'OpenWrt'
+  uci:
+    command: show
+    config: network
+  register: _wg__openwrt_network
+
+- name: Set OpenWrt network config and try to find the wg__private_key
+  when: ansible_facts['os_family'] == 'OpenWrt'
+  ansible.builtin.set_fact:
+    _openwrt__network_conf: "{{ network_conf }}"
+  vars:
+    network_conf: "{{ _wg__openwrt_network.uci.network }}"
+
+- import_tasks: keygen.yml
+  vars:
+    # hide_log: '{{ ansible_verbosity < 3 }}'
+    hide_log: false
+
+- import_tasks: set-facts.yml
+
+- import_tasks: predefined-peers.yml
+
+- name: Ping all the machines before gen-conf
+  ansible.builtin.ping:
+
+- name: Copy related hostvars to fact for peer sections
+  ansible.builtin.set_fact:
+    _wg__hostvars: "{{ _wg__hostvars | default({}) | combine({host: v}) }}"
+  with_items: "{{ ansible_play_hosts }}"
+  loop_control:
+    loop_var: host
+  when:
+    - host != inventory_hostname
+    - host not in wireguard__ignore_peers
+  failed_when:
+    - host in _wg__predefined_peers | default({})
+  vars:
+    v:
+      public_key: "{{ hostvars[host]._wg__public_key }}"
+      endpoint: "{{ hostvars[host]._wg__endpoint }}"
+      port: "{{ hostvars[host]._wg__port }}"
+      allowed_ips: "{{ hostvars[host]._wg__allowed_ips }}"
+      persistent_keepalive: "{{ hostvars[host]._wg__persistent_keepalive }}"
+      plugin_xray_tunnels: "{{ hostvars[host]._wg__plugin_xray_tunnels | default({}) }}"
+      preshared_key: "{{ hostvars[host]._wg__preshared_key }}"
+
+- name: Append the pre-defined peers to _wg__hostvars
+  ansible.builtin.set_fact:
+    _wg__hostvars: "{{ _wg__hostvars | default({}) | combine({k: v}) }}"
+  with_dict: "{{ _wg__predefined_peers | default({}) }}"
+  loop_control:
+    label: "{{ item.key }}"
+  vars:
+    k: "{{ item.key }}"
+    v:
+      public_key: "{{ item.value.public_key }}"
+      endpoint: "{{ item.value.endpoint }}"
+      port: "{{ item.value.port }}"
+      allowed_ips: "{{ item.value.allowed_ips }}"
+      persistent_keepalive: "{{ item.value.persistent_keepalive }}"
+      plugin_xray_tunnels: {}
+      preshared_key: "{{ item.value.preshared_key }}"
+
+- import_tasks: gen-conf-linux.yml
+  when: ansible_facts['os_family'] != 'OpenWrt'
+
+- import_tasks: gen-conf-openwrt.yml
+  when: ansible_facts['os_family'] == 'OpenWrt'
+
+- import_tasks: plugin-xray.yml

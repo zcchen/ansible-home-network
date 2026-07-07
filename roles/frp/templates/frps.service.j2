@@ -1,0 +1,14 @@
+[Unit]
+Description = frps
+Documentation = https://gofrp.org/docs
+After = network.target
+Wants = network.target
+
+[Service]
+Type = simple
+ExecStart = {{ frp__server_cmd }} -c /etc/frps/frps.toml
+Restart = always
+RestartSec = 30s
+
+[Install]
+WantedBy = multi-user.target

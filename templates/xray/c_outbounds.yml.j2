@@ -1,0 +1,13 @@
+{% for item in v %}
+- tag: "{{ item.tag.base }}{% if item.tag.suf is defined %}-{{ item.tag.suf }}{% endif %}"
+  protocol: vless
+  settings:
+    vnext:
+      - port: {{ item.port }}
+        address: {{ item.addr }}
+        users:
+          - id: {{ __xray_snippet__passwords.ansible }}
+            level: 0
+            encryption: none
+  streamSettings: {{ _xray_snippet__streamSettings_base }}
+{% endfor %}

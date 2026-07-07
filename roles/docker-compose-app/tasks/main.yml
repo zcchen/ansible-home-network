@@ -1,0 +1,139 @@
+---
+
+- name: "ensure the esstiential vars for app <{{ docker_compose_app__name }}> are set"
+  ansible.builtin.fail:
+    msg: "var <{{ item }}> is invalid. Failed."
+  # when: not "{{ item }}"
+  when: not item
+  with_items:
+    - 'docker_compose_app__name'
+    - "lookup('ansible.builtin.template', docker_compose_app__compose_file_template)"
+    - 'docker_compose_app__dir_base'
+
+- name: install role deps for docker-compose-app
+  become: true
+  ansible.builtin.apt:
+    update_cache: true
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - docker-compose
+
+- name: "Ensure base dir for app <{{ docker_compose_app__name }}>"
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  with_items:
+    - "{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}"
+
+- name: "Make dirs, Render docker-compose.yml & others, for app <{{ docker_compose_app__name }}>"
+  become: true
+  notify: "Restart app <{{ docker_compose_app__name }}>"
+  block:
+  - name: "make dirs for app <{{ docker_compose_app__name }}>"
+    ansible.builtin.file:
+      path: "{{ d.path }}"
+      state: directory
+      mode: "{{ d.mode }}"
+      owner: "{{ d.owner }}"
+      group: "{{ d.group }}"
+    failed_when: not d.path
+    vars:
+      d: "{{ docker_compose_app__dir_default | combine(item, recursive=true) }}"
+    # when: "{{ d.when }}"
+    when: d.when | bool
+    with_items: "{{ docker_compose_app__dirs }}"
+    loop_control:
+      label: "{{ d }}"
+  - name: "Sync the dirs and files for app <{{ docker_compose_app__name }}>"
+    ansible.builtin.copy:
+      dest: "{{ f.path }}"
+      src: "{{ f.src }}"
+      mode: "{{ f.filemode }}"
+      directory_mode: "{{ f.dirmode }}"
+      owner: "{{ f.owner }}"
+      group: "{{ f.group }}"
+    failed_when: not f.path or not f.src
+    with_items: "{{ docker_compose_app__syncs }}"
+    vars:
+      f: "{{ docker_compose_app__sync_default | combine(item, recursive=true) }}"
+    # when: "{{ f.when }}"
+    when: f.when | bool
+    loop_control:
+      label: "{{ item.path }}"
+  - name: "Render the files for app <{{ docker_compose_app__name }}>"
+    ansible.builtin.copy:
+      dest: "{{ f.path }}"
+      content: "{{ f.content }}"
+      mode: "{{ f.mode }}"
+      owner: "{{ f.owner }}"
+      group: "{{ f.group }}"
+    failed_when: not f.path
+    vars:
+      f: "{{ docker_compose_app__file_default | combine(item, recursive=true) }}"
+    # when: "{{ f.when }}"
+    when: f.when | bool
+    with_items: "{{ docker_compose_app__files }}"
+    loop_control:
+      #label: "{{ f.path }}"
+      label: "{{ f | ansible.utils.remove_keys(target=['content']) }}"
+  - name: "Render docker-compose.yml for app <{{ docker_compose_app__name }}>"
+    ansible.builtin.template:
+      src: "{{ docker_compose_app__compose_file_template }}"
+      dest: "{{ docker_compose_app__dir_base }}/{{ docker_compose_app__name }}/docker-compose.yml"
+
+- name: "Render docker-compose-app@ service"
+  become: true
+  ansible.builtin.template:
+    src: "docker-compose-app@.service"
+    dest: "/lib/systemd/system/docker-compose-app@.service"
+    mode: '0644'
+    owner: root
+    group: root
+  notify: "Restart app <{{ docker_compose_app__name }}>"
+
+- name: "Enable app <{{ docker_compose_app__name }}> service"
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: yes
+    name: "docker-compose-app@{{ docker_compose_app__name }}"
+    enabled: yes
+  notify: "Restart app <{{ docker_compose_app__name }}>"
+
+- name: "Pull the docker images for <{{ docker_compose_app__name }}>"
+  ansible.builtin.shell:
+    #cmd: docker-compose pull
+    cmd: |-
+      for i in $(cat docker-compose.yml | grep 'image:' | sed -e 's/^\s*image:\s*//g'); do
+        docker pull $i;
+      done
+  args:
+    chdir: "{{ (docker_compose_app__dir_base, docker_compose_app__name) | path_join }}"
+  retries: 3
+  delay: 5
+  register: docker_compose_app__pull_result
+  until: docker_compose_app__pull_result.rc == 0
+  changed_when: false     # never show changed.
+
+- name: "Build the docker images for <{{ docker_compose_app__name }}> if needed"
+  ansible.builtin.shell:
+    cmd: docker-compose build
+  args:
+    chdir: "{{ (docker_compose_app__dir_base, docker_compose_app__name) | path_join }}"
+  retries: 3
+  delay: 5
+  register: docker_compose_app__pull_result
+  until: docker_compose_app__pull_result.rc == 0
+  changed_when: false     # never show changed.
+
+- name: "Include tasks files before service run: <{{ docker_compose_app__before_run_taskfiles }}>"
+  ansible.builtin.include_tasks:
+    file: "{{ item }}"
+  with_items: "{{ docker_compose_app__before_run_taskfiles }}"
+
+- name: "Trigger the handler for <{{ docker_compose_app__name }}>"
+  ansible.builtin.meta: "flush_handlers"

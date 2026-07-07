@@ -1,0 +1,64 @@
+---
+- name: Ensure deploy hook folders exist.
+  ansible.builtin.file:
+    path: /etc/letsencrypt/renewal-hooks/deploy
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+- name: Create deploy hook to execute tasks post cert generatation.
+  ansible.builtin.template:
+    src: reload_services.j2
+    dest: /etc/letsencrypt/renewal-hooks/deploy/reload_services.sh
+    owner: root
+    group: root
+    mode: 0750
+  when:
+    - certbot__reload_services is defined
+    # ensure the variable is list type
+    - certbot__reload_services is iterable
+    - certbot__reload_services is not string
+    - certbot__reload_services is not mapping
+
+- name: Ensure credential folder exists.
+  ansible.builtin.file:
+    path: /etc/letsencrypt/credentials/
+    state: directory
+    mode: 0700
+    owner: root
+    group: root
+
+- name: "Create DNS plugin credential files."
+  ansible.builtin.template:
+    src: dns_plugin_credentials.ini.j2
+    # dest: "/etc/letsencrypt/credentials/{{item.name}}_dns-{{item.dns.plugin}}.ini"
+    dest: "{{ certbot__dns_credentials_file }}"
+    owner: root
+    group: root
+    mode: 0600
+  with_items: "{{ _certbot__domains }}"
+  loop_control:
+    loop_var: cert_item
+    label: "{{ {'name': cert_item.name, 'domains': cert_item.domains} }}"
+  vars:
+    plugin: "{{ cert_item.dns.plugin }}"
+    token: "{{ cert_item.dns.token }}"
+    email: "{{ cert_item.dns.email }}"
+  failed_when:
+    - cert_item.dns.plugin not in certbot__supported_dns_plugins
+  when:
+    - cert_item.dns.plugin is in certbot__supported_dns_plugins
+
+- name: Set DNS plugins into a list.
+  ansible.builtin.set_fact:
+    _certbot__dns_plugins: "{{ (_certbot__dns_plugins | default([]) + [item.dns.plugin]) | unique }}"
+  with_items: "{{ _certbot__domains }}"
+  loop_control:
+    label: "{{ {'name': item.name, 'plugin': item.dns.plugin} }}"
+
+- name: "Package - Install DNS Plugins {{ _certbot__dns_plugins }}."
+  ansible.builtin.package:
+    name: "python{{ ansible_python.version.major }}-certbot-dns-{{ item }}"
+    state: present
+  with_items: "{{ _certbot__dns_plugins }}"

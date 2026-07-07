@@ -1,0 +1,44 @@
+---
+
+- name: calc the public key from predefined_peers, and check essential keys ('description', 'address') as well
+  ansible.builtin.shell: "wg pubkey"
+  args:
+    stdin: "{{ item.private_key }}"
+  with_items: "{{ wireguard__predefined_peers }}"
+  register: _wg__predefined_peers_pubkey_results
+  changed_when: false
+  loop_control:
+    label: "{{ {'description': item.description, 'address': item.address} }}"
+  failed_when:
+    - not item.description or not item.address or not item.private_key
+
+# - name: debug print _wg__predefined_peers_pubkey_results
+#   debug:
+#     msg: "{{ _wg__predefined_peers_pubkey_results }}"
+#   when: _wg__predefined_peers_pubkey_results is defined
+
+- name: combine the _wg__predefined_peers
+  ansible.builtin.set_fact:
+    _wg__predefined_peers: "{{ _wg__predefined_peers | default({}) | combine(peer_dict) }}"
+  loop: "{{ wireguard__predefined_peers | zip(_wg__predefined_peers_pubkey_results.results) | list }}"
+  vars:
+    peer_dict: "{{ {peer_name: peer_value} }}"
+    peer_name: "{{ _base.description }}"
+    _addr: "{{ _base.address.split('/')[0] }}/{{ 128 if ':' in _base.address else 32 }}"
+    _update:
+      public_key: "{{ item.1.stdout }}"
+      allowed_ips: "{{ [_addr] + _base.allowed_ips | default(wireguard__predefined_peer_default.allowed_ips) }}"
+    _base: "{{ item.0 }}"
+    peer_value: "{{ wireguard__predefined_peer_default | combine(_base, _update, recursive=True) }}"
+  loop_control:
+    # label: "{{ {'description': _base.description, 'address': _base.address, 'pubkey': item.1.stdout} }}"
+    label: "{{ {'description': _base.description, 'address': _base.address, 'pubkey': _update.public_key} }}"
+
+- name: debug print _wg__predefined_peers
+  debug:
+    msg: "{{ _wg__predefined_peers }}"
+  when:
+    - _wg__predefined_peers is defined
+    - debug_print
+
+

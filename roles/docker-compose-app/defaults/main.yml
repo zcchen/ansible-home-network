@@ -1,0 +1,46 @@
+---
+
+# For inherited role to use
+docker_compose_app__name: ""
+#docker_compose_app__compose_file_content: ""
+docker_compose_app__compose_file_template: "docker-compose.yml.j2"
+
+docker_compose_app__dirs: []
+docker_compose_app__dir_default:
+  path: ""  # must
+  owner: root
+  group: root
+  mode: "0755"
+  when: true
+
+docker_compose_app__files: []
+docker_compose_app__file_default:
+  path: ""      # must
+  content: ""
+  owner: root
+  group: root
+  mode: "0644"
+  when: true
+
+docker_compose_app__syncs: []
+docker_compose_app__sync_default:
+  path: ""    # must
+  src: ""     # must
+  owner: root
+  group: root
+  filemode: "0644"
+  dirmode: "0755"
+  when: true
+  rsync_opts: []
+  links: true
+
+docker_compose_app__service_restart_trigger: false
+#########
+
+docker_compose_app__dir_base: "/app/"
+
+docker_compose_app__debug: false
+
+docker_compose_app__before_run_taskfiles: []
+
+docker_compose_app__service_restart: true

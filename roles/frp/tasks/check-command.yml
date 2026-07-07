@@ -1,0 +1,38 @@
+---
+
+- name: "Check is {{ bin }} installed already?"
+  ansible.builtin.shell: "command -v {{ bin }}"
+  changed_when: false
+  register: reg_bin_path
+  ignore_errors: yes
+
+- name: "set {{ bin }} command path"
+  ansible.builtin.set_fact:
+    bin_path: "{{ reg_bin_path.stdout }}"
+
+- name: "raise error if missing binary '{{ bin }}'"
+  ansible.builtin.fail:
+    msg: "'{{ bin }}' is NOT found in this firmware."
+  when:
+    - bin_path == ""
+    - _failed_if_binary_not_found
+
+- name: "check {{ bin }} version"
+  ansible.builtin.shell: "{{ bin_version_cmd }}"
+  changed_when: false
+  register: reg_bin_version
+  when:
+    - bin_path | length > 0
+
+- name: "Set {{ bin }} version got"
+  ansible.builtin.set_fact:
+    _bin__version: "{{ reg_bin_version.stdout }}"
+  when:
+    - bin_path | length > 0
+
+- name: debug print frp__version
+  ansible.builtin.debug:
+    msg: "_bin__version: {{ _bin__version }}; matched: {{ _bin__version == frp__version }}"
+  when:
+    - bin_path | length > 0
+

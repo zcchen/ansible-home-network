@@ -1,0 +1,31 @@
+---
+
+certbot__testmode: false
+certbot__del_before_cert: false
+certbot__auto_renew: true
+
+certbot__reload_services: []
+
+certbot__dns_plugin: ""
+certbot__dns_api_token: ""
+certbot__dns_api_email: ""
+
+certbot__domains: []
+# - name: example.com  # default is empty string, fill it to use
+#   domains:
+#   - sub0.example.com
+#   - sub1.example.com
+#   dns:
+#     plugin: ""  # default is empty string, if none or empty string, fill as `certbot__dns_plugin`, if still none, raise error
+#     token: "" # default is empty string, if none or empty string, fill as `certbot__dns_api_token`, if still none, raise error
+#     email: "" # default is empty string, if none or empty string, fill as `certbot__dns_api_email`, some DNS challenge require it.
+
+certbot__cert_cmd_extra_options: ""
+certbot__hsts: false
+
+# certbot__auto_renew_user: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+certbot__auto_renew_user: "root"
+certbot__auto_renew_hour: "3"
+certbot__auto_renew_minute: "30"
+certbot__auto_renew_options: "--quiet"
+

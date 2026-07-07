@@ -1,0 +1,105 @@
+---
+#######################################
+# General settings
+#######################################
+
+# The default state of the wireguard service
+wireguard__service_enabled: true
+
+# The restart flag.
+wireguard__force_restart: false
+
+wireguard__confdir: {}
+wireguard__confdir_default:
+  path: "/etc/wireguard/"
+  owner: "root"
+  group: "root"
+  dirmode: "700"
+  filemode: "600"
+
+# The essentials
+# The default port WireGuard will listen if not specified otherwise.
+wireguard__port: 51820
+# The default interface name that WireGuard should use if not specified otherwise.
+wireguard__interface: "wg0"
+# VPN address
+wireguard__address: ""
+# VPN accessing endpoint
+wireguard__endpoint: ""
+# The white list to be forwarded to this VPN
+wireguard__allowed_ips: []
+# The keepalive time interval
+wireguard__persistent_keepalive: 30
+
+# optionals:
+# private key
+wireguard__private_key: ""
+# Pre-shared-key
+wireguard__preshared_key: ""
+#   The DNS,
+wireguard__dns:
+#   The mtu, 根据 endpoint 是 IPv4 还是 IPv6，具体的值可以是 1440(IPv4) 或者 1420(IPv6)
+#   如果处于特殊环境下再额外减掉即可 (如家宽 PPPoE 额外 -8)。
+wireguard__mtu:
+# The table, 'auto' will update the iptable base on the AllowedIPs, 'off' will be disabled auto-config.
+wireguard__table:
+
+# The wireguard up / down actions.
+wireguard__preup: []
+wireguard__predown: []
+wireguard__postup: []
+wireguard__postdown: []
+
+wireguard__predefined_peers: []
+wireguard__predefined_peer_default:
+  description: ""   # must, the description text to describe what peer is
+  private_key:  ""  # must
+  address: ""       # must, the peer IP addr, will be filled to `AllowedIPs` key in its peer section
+  allowed_ips: []
+  preshared_key: ""
+  endpoint: ""      # optional, useful to join a completed wireguard network.
+  port: 0           # optional, useful to join a completed wireguard network.
+  persistent_keepalive: 30   # default value if not defined.
+
+# The peers will be ignored in the config file even they are in `ansible_play_hosts` var (list type).
+wireguard__ignore_peers: []
+
+
+# Wireguard Plugins
+wireguard__plugin_xray_tunnels: {}  # key is the peer host name. value is like the following dict.
+wireguard__plugin_xray_tunnel_default:
+  local_port: 0   # to be filled by the elem from `wireguard__plugin_xray_tunnels`
+  remote_port: 0  # to be filled by the `hostvars[key].wireguard__port` var
+  proxy:
+    addr: ""            # default will be filled as the key from `wireguard__plugin_xray_tunnels`
+    port: 0             # to be filled by the elem from `wireguard__plugin_xray_tunnels`
+    password: ""        # to be filled by the elem from `wireguard__plugin_xray_tunnels`
+    method: ""          # to be filled by the elem from `wireguard__plugin_xray_tunnels`
+    streamSettings: {}  # to be filled by the elem from `wireguard__plugin_xray_tunnels`
+
+wireguard__plugin_xray_snippets:
+  inbound:
+    listen: 127.0.0.1
+    port: "{{ peer_item.value.local_port }}"
+    protocol: dokodemo-door
+    settings:
+      address: "{{ peer_item.value.proxy.addr }}"
+      network: udp
+      port: "{{ peer_item.value.remote_port }}"
+    tag: "wg-in-{{ peer_item.key }}"
+  outbound:
+    vless:
+      protocol: "vless"
+      settings:
+        vnext:
+        - address: "{{ peer_item.value.proxy.addr }}"
+          port: "{{ peer_item.value.proxy.port }}"
+          users:
+          - id: "{{ peer_item.value.proxy.password }}"
+            encryption: "none"
+      streamSettings: "{{ peer_item.value.proxy.streamSettings }}"
+      tag: "wg-out-{{ peer_item.key }}"
+  routing_rule:
+    inboundTag: ["wg-in-{{ peer_item.key }}"]
+    outboundTag: "wg-out-{{ peer_item.key }}"
+

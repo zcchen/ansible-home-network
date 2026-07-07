@@ -1,0 +1,20 @@
+---
+
+- name: define '_certbot__domains' var
+  ansible.builtin.set_fact:
+    _certbot__domains: []
+
+- name: Set '_certbot__domains' var
+  ansible.builtin.set_fact:
+    _certbot__domains: "{{ _certbot__domains + [d] }}"
+  with_items: "{{ certbot__domains | default([]) }}"
+  vars:
+    d:
+      name: "{{ item.name }}"   # .dns.name is required for DNS challenge
+      domains: "{{ item.domains | default([]) }}"
+      dns:
+        plugin: "{{ item.plugin | default(certbot__dns_plugin) }}"
+        token: "{{ item.token | default(certbot__dns_api_token) }}"
+        email: "{{ item.email | default(certbot__dns_api_email) }}"
+
+

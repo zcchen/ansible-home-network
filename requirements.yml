@@ -1,0 +1,14 @@
+# Collections section
+collections:
+  # Install from Ansible Galaxy with version constraints
+  - name: community.general
+    version: ">=13.0.0"
+
+# Roles section
+roles:
+  # dnsmasq
+  - name: Oefenweb.ansible-dnsmasq
+    src: https://github.com/Oefenweb/ansible-dnsmasq
+    version: master
+
+

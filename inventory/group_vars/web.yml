@@ -1,0 +1,103 @@
+---
+
+nginx__https_enable: true
+certbot__reload_services:
+  - nginx
+
+nginx__http_site_files:
+  default: |
+    server {
+      listen 80 default_server;
+      listen [::]:80 default_server;
+      server_name _;
+      server_tokens off;    # Prevent nginx HTTP Server Detection
+      root /var/www/html;
+      index index.html index.htm index.nginx-debian.html;
+      return 444;
+    }
+
+  basedomain-0-http: |
+    server {
+      listen 80;
+      listen [::]:80;
+      server_name {{ __domain_basename }} "*.{{ __domain_basename }}";
+      server_tokens off;    # Prevent nginx HTTP Server Detection
+      return 301 https://$host$request_uri;
+    }
+
+  basedomain-0-https: |
+    server {
+      {{ __snippet_nginx__base | indent(width=2) }}
+
+      server_name {{ __domain_basename }};
+      ssl_certificate /etc/letsencrypt/live/{{ __domain_basename }}/fullchain.pem;
+      ssl_certificate_key  /etc/letsencrypt/live/{{ __domain_basename }}/privkey.pem;
+
+      location / {
+        root /usr/share/nginx/html/;
+        index index.html index.htm;
+      }
+
+      location /websocket {
+        proxy_cache off;
+        proxy_buffering off;
+        {{ _snippet_nginx__rev_proxy_header | indent(width=4) }}
+        proxy_socket_keepalive on;
+        proxy_pass http://127.0.0.1:61230;
+      }
+
+      location /xhttp {
+        proxy_cache off;
+        proxy_redirect off;
+        {{ _snippet_nginx__rev_proxy_grpc | indent(width=4) }}
+        grpc_pass grpc://127.0.0.1:61232;
+      }
+    }
+
+  basedomain-wildcard.wildcard.frp-https: |
+    server {
+      {{ __snippet_nginx__base | indent(width=2) }}
+
+      server_name ~^(?<sub>.+)\.(?<port>.+)\.frp\.{{ __domain_basename | replace('.', '\.') }}$;
+      ssl_certificate /etc/letsencrypt/live/{{ __domain_basename }}/fullchain.pem;
+      ssl_certificate_key  /etc/letsencrypt/live/{{ __domain_basename }}/privkey.pem;
+
+      location / {
+        resolver 127.0.0.1 ipv6=off;
+        proxy_cache off;
+        proxy_ssl_verify off;
+        proxy_ssl_server_name on;
+        proxy_ssl_protocols TLSv1.3 TLSv1.2 TLSv1.1 TLSv1;
+        {{ _snippet_nginx__rev_proxy_header | indent(width=4) }}
+
+        if ( $sub ~* "admin" ) {
+          proxy_pass http://localhost:7500;
+          break ;
+        }
+        proxy_pass https://$sub.localhost:7000;
+      }
+    }
+
+  basedomain-docker-https: |
+    server {
+      {{ __snippet_nginx__base | indent(width=2) }}
+
+      server_name docker.{{ __domain_basename }} *.docker.{{ __domain_basename }};
+      ssl_certificate /etc/letsencrypt/live/{{ __domain_basename }}/fullchain.pem;
+      ssl_certificate_key  /etc/letsencrypt/live/{{ __domain_basename }}/privkey.pem;
+
+      {{ _snippet_nginx__allow_lan_only | indent(width=2) }}
+
+      location / {
+        {{ _snippet_nginx__rev_proxy_header | indent(width=4) }}
+        proxy_pass http://127.0.0.1:5000;
+        error_page 403 = @handle_403_redirect;
+      }
+
+      location @handle_403_redirect {
+        # http 303 (See Other) is better, because:
+        # 1. I can access my private docker reg via VPN only when I need.
+        # 2. No browser cache issue. (Manually browser cache cleaning is required for http 302).
+        return 303 https://registry-1.docker.io$uri;
+      }
+    }

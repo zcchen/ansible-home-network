@@ -1,0 +1,126 @@
+---
+
+xray:
+  children:
+    xray_servers:
+      hosts:
+        vps.A:
+        vps.B:
+    xray_clients:
+      children:
+        xray_openwrt:
+          hosts:
+            router.A.lan:
+            router.B.lan:
+        xray_linux:
+
+
+xray_servers:
+  vars:
+    __xray_s__inbounds_networks:
+      - listen: 127.0.0.1
+        port: 61230
+        streamSettings:
+          network: ws
+      - listen: 127.0.0.1
+        port: 61232
+        streamSettings:
+          network: xhttp
+    _xray_s__inbounds: >-
+      {{ lookup("template", 'xray/s_inbounds.yml.j2', template_vars={'v': __xray_s__inbounds_networks}) | from_yaml }}
+    xray__configs:
+      behind-nginx_vless-localhost:
+        inbounds: "{{ _xray_s__inbounds }}"
+        outbounds:
+          - protocol: freedom
+            targetStrategy: "UseIPv4v6"
+            tag: free
+
+xray_openwrt:
+  vars:
+    xray__configs:
+      passwall:
+        inbounds: "{{ _xray_c__inbounds_allproxy }}"
+        outbounds: "{{ _xray_c__outbounds_proxies }}"
+        routing: "{{ _xray_c__routing_allproxy }}"
+
+xray_linux:
+  vars:
+    # config settings
+    xray__configs:
+      passwall:
+        inbounds: "{{ _xray_c__inbounds_auto }}"
+        outbounds: "{{ _xray_c__outbounds_proxies }}"
+        routing: "{{ _xray_c__routing_auto }}"
+
+
+xray_clients:
+  vars:
+    __xray__tag_sufs:
+      - "{{ __frp.vps.A.prefix }}"
+      - "{{ __frp.vps.B.prefix }}"
+    # outbounds related
+    __xray_c__outbound_proxies:
+      - addr: "{{ __network.vps.A.baseAddr }}"
+        port: 443
+        tag: {"base": "proxy", "suf": "{{ __xray__tag_sufs[0] }}"}
+      - addr: "{{ __network.vps.B.baseAddr }}"
+        port: 443
+        tag: {"base": "proxy", "suf": "{{ __xray__tag_sufs[1] }}"}
+    # allpass related
+    __xray_c__inbound_proxies:
+      - {"protocol": "socks", "port": 7070, "tag": {"base": "allpass-socks"}}
+      - {"protocol": "socks", "port": 7071, "tag": {"base": "allpass-socks", "suf": "{{ __xray__tag_sufs[0] }}"}}
+      - {"protocol": "socks", "port": 7072, "tag": {"base": "allpass-socks", "suf": "{{ __xray__tag_sufs[1] }}"}}
+      - {"protocol": "http", "port": 8228, "tag": {"base": "allpass-http"}}
+      - {"protocol": "http", "port": 8228, "listen": "{{ ansible_ssh_host }}", "tag": {"base": "allpass-http-r"}}
+      - {"protocol": "http", "port": 8229, "tag": {"base": "allpass-http", "suf": "{{ __xray__tag_sufs[0] }}"}}
+      - {"protocol": "http", "port": 8230, "tag": {"base": "allpass-http", "suf": "{{ __xray__tag_sufs[1] }}"}}
+    _xray_c__inbounds_allproxy: >-
+      {{ lookup("template", 'xray/c_inbounds.yml.j2', template_vars={'v': __xray_c__inbound_proxies}) | from_yaml }}
+    _xray_c__outbounds_proxies: >-
+      {{ lookup("template", 'xray/c_outbounds.yml.j2', template_vars={'v': __xray_c__outbound_proxies}) | from_yaml }}
+    __xray_c__routing_allproxy:
+      tag_in_list: ["allpass-socks", "allpass-http"]
+      tag_out_base: "proxy"
+      tag_suf_list: "{{ __xray__tag_sufs }}"
+    _xray_c__routing_allproxy: >-
+      {{ lookup("template", 'xray/routing_allproxy.yml.j2', template_vars=__xray_c__routing_allproxy) | from_yaml }}
+    # auto-proxy extension related
+    __xray_c__inbound_auto:
+      - {"protocol": "http", "port": 8118, "tag": {"base": "autopass"}}
+      - {"protocol": "http", "port": 8118, "listen": "{{ ansible_ssh_host }}", "tag": {"base": "autopass-r"}}
+    __xray_c__routing_autoproxy:
+      tag_in_proxy_list: ["allpass-socks", "allpass-http"]
+      tag_in_auto_list: ["autopass", "autopass-r"]
+      tag_out_base: proxy
+      tag_suf_list: "{{ __xray__tag_sufs }}"
+      my_basedomain: "{{ __domain_basename }}"
+      domains_direct: []
+      ips_direct: []
+      domains_proxy:
+        - geosite:google
+        - geosite:geolocation-!cn
+        - geosite:gfw
+      rules_region:
+        - domain:
+            - geosite:openai
+            - domain:reddit.com
+            - domain:tiktok.com
+            - domain:chatgpt.com
+          inboundtag: ["{{ tag_in_auto }}", "{{ tag_in_proxy }}"]
+          outboundTag: "{{ tag_out_proxy }}-{{ __frp.vps.B.prefix }}"
+        - domain:
+            - geosite:netflix
+            - domain:reddit.com
+          inboundtag: ["{{ tag_in_auto }}", "{{ tag_in_proxy }}"]
+          outboundTag: "{{ tag_out_proxy }}-{{ __frp.vps.A.prefix }}"
+    _xray_c__inbounds_auto: >-
+      {{ _xray_c__inbounds_allproxy +
+         lookup("template", 'xray/c_inbounds.yml.j2', template_vars={"v": __xray_c__inbound_auto}) | from_yaml
+      }}
+    _xray_c__outbounds_auto: "{{ _xray_c__outbounds_proxies + _xray_snippet__client_outbound_direct }}"
+    _xray_c__routing_auto: >-
+      {{ lookup("template", 'xray/routing_autoproxy.yml.j2', template_vars=__xray_c__routing_autoproxy) | from_yaml }}
+
+

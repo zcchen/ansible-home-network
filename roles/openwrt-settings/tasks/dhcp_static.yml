@@ -1,0 +1,128 @@
+---
+
+- name: show host networks
+  debug:
+    msg: "{{ all_networks }}"
+  vars:
+    networks_template: >-
+      [{% for iface in ansible_interfaces %}{% set i = iface | replace('-', '_') %}
+        {% if ansible_facts[i].ipv4 is defined %}
+          "{{ ansible_facts[i].ipv4.network }}/{{ ansible_facts[i].ipv4.prefix }}",
+        {% endif %}
+      {% endfor %}]
+    all_networks: "{{ networks_template | from_yaml | unique }}"
+
+- name: "Filter the IPs to those matching the host networks ({{ all_host_networks }})"
+  with_dict: "{{ dhcp_static_clients }}"
+  ansible.builtin.set_fact:
+    _openwrt__dhcp_static__options: "{{ _openwrt__dhcp_static__options | default([]) + [options] }}"
+  when: v.ip is ansible.utils.in_any_network(all_host_networks)
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    options:
+      name: "{{ k }}"
+      ip: "{{ v.ip }}"
+      mac: "{{ v.mac }}"
+    host_networks_template: >-
+      [{% for iface in ansible_interfaces %}{% set i = iface | replace('-', '_') %}
+        {% if ansible_facts[i].ipv4 is defined %}
+          "{{ ansible_facts[i].ipv4.network }}/{{ ansible_facts[i].ipv4.prefix }}",
+        {% endif %}
+      {% endfor %}]
+    all_host_networks: "{{ host_networks_template | from_yaml | unique }}"
+
+- name: debug print _openwrt__dhcp_static__options
+  when: debug_print | default(false)
+  debug:
+    msg: "{{ _openwrt__dhcp_static__options | default([]) }}"
+
+- name: uci get the current dhcp config
+  uci:
+    command: show
+    config: dhcp
+  register: _openwrt__uci_dhcp
+
+- name: "Get the data from uci result: sections of dhcp.@host[]"
+  with_dict: "{{ _openwrt__uci_dhcp.uci['dhcp'] }}"
+  loop_control:
+    label: "{{ {'section': k, 'type': v.type} }}"
+  ansible.builtin.set_fact:
+    _openwrt__dhcp__uci_sections_curr: "{{ _openwrt__dhcp__uci_sections_curr | default({}) | combine(section) }}"
+  vars:
+    k: "{{ item.key }}"
+    v: "{{ item.value }}"
+    cond__is_dhcp_host: "{{ v.type == 'host' }}"
+    section: "{{ {k: v} if cond__is_dhcp_host else {} }}"
+
+- name: debug print _openwrt__dhcp__uci_sections_curr
+  when: debug_print | default(false)
+  debug:
+    msg: "{{ _openwrt__dhcp__uci_sections_curr | default({}) }}"
+
+- name: Generate the sections for uci to delete (incl. the update ones)
+  with_items: "{{ _openwrt__dhcp_static__options | default([]) }}"
+  ansible.builtin.set_fact:
+    _openwrt__dhcp__uci_sections_mod: >-
+      {{ (_openwrt__dhcp__uci_sections_mod | default([]) + section_mod) | unique }}
+    _openwrt__dhcp__uci_sections_add: >-
+      {{ (_openwrt__dhcp__uci_sections_add | default([]) + section_add) | unique }}
+  vars:
+    section_mod_template: >-
+      [{% for k, v in _openwrt__dhcp__uci_sections_curr.items() %}
+        {% if (v.options.name == item.name or v.options.ip == item.ip or v.options.mac == item.mac) and
+              not (v.options.name == item.name and v.options.ip == item.ip and v.options.mac == item.mac) %}
+          {
+            "name": "{{ k }}",
+            "type": "host",
+            "options": {{ item }},
+          },
+        {% endif %}
+      {% endfor %}]
+    section_mod: "{{ section_mod_template | from_yaml | unique }}"
+    section_add_template: >-
+      [ {% set flag = namespace(found=False) %}
+        {% for k, v in _openwrt__dhcp__uci_sections_curr.items() %}
+          {% if v.options.name == item.name or v.options.ip == item.ip or v.options.mac == item.mac %}
+            {% set flag.found = True %}
+          {% endif %}
+        {% endfor %}
+        {% if not flag.found %}
+          {
+            "type": "host",
+            "options": {{ item }},
+          },
+        {% endif %}
+      ]
+    section_add: "{{ section_add_template | from_yaml | unique }}"
+
+- name: debug print _openwrt__dhcp__uci_sections_mod
+  when: debug_print | default(false)
+  debug:
+    msg: "{{ _openwrt__dhcp__uci_sections_mod | default([]) }}"
+- name: debug print _openwrt__dhcp__uci_sections_add
+  when: debug_print | default(false)
+  debug:
+    msg: "{{ _openwrt__dhcp__uci_sections_add | default([]) }}"
+
+- name: Execute the uci command for dhcp config
+  notify:
+    - uci commit dhcp
+    - Restart dnsmasq
+  block:
+    - name: Execute the uci command for dhcp config, modify
+      when: sections | default([]) | length > 0
+      uci:
+        command: update
+        config: dhcp
+        sections: "{{ sections }}"
+      vars:
+        sections: "{{ _openwrt__dhcp__uci_sections_mod | default([]) }}"
+    - name: Execute the uci command for dhcp config, add
+      when: sections | default([]) | length > 0
+      uci:
+        command: create
+        config: dhcp
+        sections: "{{ sections }}"
+      vars:
+        sections: "{{ _openwrt__dhcp__uci_sections_add | default([]) }}"

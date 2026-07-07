@@ -1,0 +1,33 @@
+---
+
+- name: uci commit network
+  when: ansible_facts['os_family'] == 'OpenWrt'
+  uci:
+    command: commit
+    config: network
+
+- name: uci commit firewall
+  when: ansible_facts['os_family'] == 'OpenWrt'
+  uci:
+    command: commit
+    config: firewall
+
+- name: Restart wireguard (linux)
+  ansible.builtin.service:
+    name: "wg-quick@{{ wireguard__interface }}"
+    state: "restarted"
+  when: ansible_facts['os_family'] != 'OpenWrt'
+  listen: "Restart wireguard"
+
+- name: Restart wireguard (openwrt)
+  when: ansible_facts['os_family'] == 'OpenWrt'
+  ansible.builtin.shell: >-
+    ubus call network.interface.{{ wireguard__interface }} down && ubus call network.interface.{{ wireguard__interface }} up
+  listen: "Restart wireguard"
+
+- name: Restart firewall (openwrt)
+  when: ansible_facts['os_family'] == 'OpenWrt'
+  ansible.builtin.service:
+    name: firewall
+    state: restarted
+  listen: "Restart firewall"

@@ -1,0 +1,51 @@
+---
+
+- name: Restart cron (initV)
+  ansible.builtin.service:
+    name: cron
+    state: restarted
+  listen: "Restart cron"
+
+- name: uci commit ddns
+  uci:
+    command: commit
+    config: ddns
+
+- name: Restart ddns (initV)
+  ansible.builtin.service:
+    name: ddns
+    state: restarted
+  listen: "Restart ddns"
+
+- name: uci commit network
+  uci:
+    command: commit
+    config: network
+
+- name: Restart network (initV)
+  ansible.builtin.service:
+    name: network
+    state: restarted
+  listen: "Restart network"
+
+- name: uci commit firewall
+  uci:
+    command: commit
+    config: firewall
+
+- name: Restart firewall (initV)
+  ansible.builtin.service:
+    name: firewall
+    state: restarted
+  listen: "Restart firewall"
+
+- name: uci commit dhcp
+  uci:
+    command: commit
+    config: dhcp
+
+- name: Restart dnsmasq (initV)
+  ansible.builtin.service:
+    name: dnsmasq
+    state: restarted
+  listen: "Restart dnsmasq"

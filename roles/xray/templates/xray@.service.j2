@@ -1,0 +1,12 @@
+[Unit]
+Description=XRay Service
+Documentation=https://xtls.github.io/
+After=network-online.target nss-lookup.target
+
+[Service]
+ExecStart={{ _xray__binary_path | default('/usr/local/bin/xray') }} run -config /etc/xray/%i.json
+Restart=on-failure
+RestartPreventExitStatus=21
+
+[Install]
+WantedBy=multi-user.target

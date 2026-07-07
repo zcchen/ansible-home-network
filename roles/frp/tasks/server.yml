@@ -1,0 +1,33 @@
+---
+
+- name: Prepare the /etc/frps directory
+  ansible.builtin.file:
+    path: "/etc/frps/"
+    state: directory
+    mode: '0755'
+
+- name: generate the config to /etc/frps/frps.toml
+  ansible.builtin.template:
+    src: "frp.toml.j2"
+    dest: /etc/frps/frps.toml
+  vars:
+    value: "{{ frp__server_default | combine(frp__server, recursive=true) }}"
+  notify:
+    - Restart frps
+
+- name: copy <frps.service> file to </etc/systemd/system/> folder
+  ansible.builtin.template:
+    src: frps.service.j2
+    dest: /lib/systemd/system/frps.service
+  register: systemd_config
+  notify:
+    - Restart frps
+
+- name: setup frps.service
+  ansible.builtin.systemd:
+    daemon_reload: yes
+    name: frps
+    enabled: yes
+  when: systemd_config is changed
+  notify:
+    - Restart frps

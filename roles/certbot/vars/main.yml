@@ -1,0 +1,30 @@
+---
+certbot__supported_dns_plugins:
+ - cloudflare
+ - digitalocean
+ - luadns
+
+certbot__dns_credentials_file: "/etc/letsencrypt/credentials/{{cert_item.name}}_dns-{{cert_item.dns.plugin}}.ini"
+
+certbot__command_create: >-
+  {{ certbot__script }} certonly
+  {{ '--hsts' if certbot__hsts else '' }}
+  {{ '--test-cert' if certbot__testmode else '' }}
+  --noninteractive --agree-tos
+  --dns-{{ cert_item.dns.plugin }} --dns-{{ cert_item.dns.plugin }}-credentials {{ certbot__dns_credentials_file }}
+  --cert-name {{ cert_item.name }}
+  -d {{ ([cert_item.name] + cert_item.domains) | unique | join(',') }}
+  {{ '--deploy-hook /etc/letsencrypt/renewal-hooks/deploy/reload_services.sh'
+    if certbot__reload_services | length > 0
+  else '' }}
+  {{ certbot__cert_cmd_extra_options }}
+
+certbot__command_delete: >-
+  {{ certbot__script }} delete --noninteractive --cert-name {{ cert_item.name }}
+
+certbot__command_renew: >-
+  {{ certbot__script }} renew --cert-name {{ cert_item.name }} {{ certbot__auto_renew_options }}
+
+certbot__command_listDomains: >-
+  {{ certbot__script }} certificates --cert-name {{ cert_item.name }} | grep Domains | cut -d':' -f2
+

@@ -1,0 +1,44 @@
+dns:
+    hosts:
+      dns.google: 8.8.8.8
+      dns.google2: 8.8.4.4
+      dns.pub: 119.29.29.29
+      dns.alidns.com: 223.5.5.5
+      geosite:category-ads-all: 127.0.0.1
+balancers:
+  - tag: "leastPing-proxy-balancer"
+    selector: {{ [tag_out_base] | product(tag_suf_list) | map('join', '-')}}
+    strategy:
+      type: leastPing
+rules:
+  - inboundTag: {{ tag_in_proxy_list + ["!cn-dns-tag"] }}
+    balancerTag: "leastPing-proxy-balancer"
+  {% for suf in tag_suf_list %}
+  - inboundtag: {{ tag_in_list | product([suf]) | map('join', '-') }}
+    outboundtag: "{{ tag_out_base }}-{{ suf }}"
+  {% endfor %}
+  - domain:
+      - "domain:{{ my_basedomain }}"
+      - geosite:cn
+    {% for d in domains_direct | default([]) %}
+      - {{ d }}
+    {% endfor %}
+    inboundtag: {{ tag_in_auto_list }}
+    outboundTag: "direct"
+  - ip:
+      - "geoip:cn"
+      - "geoip:private"
+    {% for ip in ips_direct | default([]) %}
+      - {{ ip }}
+    {% endfor %}
+    inboundtag: {{ tag_in_auto_list }}
+    outboundTag: "direct"
+  {% for reg in rules_region | default([]) %}
+  {{ reg }}
+  {% endfor %}
+  - domain:
+    {% for d in domains_proxy | default([]) %}
+      - {{ d }}
+    {% endfor %}
+    inboundtag: {{ tag_in_auto_list }}
+    balancerTag: "leastPing-proxy-balancer"

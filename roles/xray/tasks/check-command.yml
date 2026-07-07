@@ -1,0 +1,31 @@
+---
+
+- name: "Check is {{ bin }} installed already?"
+  ansible.builtin.shell: "command -v {{ bin }}"
+  changed_when: false
+  register: reg_bin_path
+  ignore_errors: yes
+
+- name: set xray command state 2nd round
+  ansible.builtin.set_fact:
+    _xray__binary_path: "{{ reg_bin_path.stdout }}"
+
+- name: raise error since missing binary 'xray'
+  ansible.builtin.fail:
+    msg: "'xray' is NOT found in this firmware."
+  when:
+    - not _xray__binary_path
+    - _failed_if_binary_not_found
+
+- name: check xray version
+  ansible.builtin.shell: "{{ _xray__binary_path }} version | grep -i xray | awk '{print $2}'"
+  changed_when: false
+  register: reg_bin_version
+
+- name: Set xray version got
+  ansible.builtin.set_fact:
+    _xray__version: "{{ reg_bin_version.stdout }}"
+
+- name: debug xray__version unequal?
+  ansible.builtin.debug:
+    msg: "_xray__version: {{ _xray__version }}; matched: {{ _xray__version == xray__version }}"

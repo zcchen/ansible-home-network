@@ -1,0 +1,41 @@
+---
+
+- name: ensure folder /etc/xray/plugins exists
+  ansible.builtin.file:
+    path: "/etc/xray/plugins/"
+    state: directory
+    mode: '0755'
+
+- name: Upload geodata download script
+  ansible.builtin.copy:
+    src: xray-geodata-update.sh
+    dest: "/etc/xray/plugins/"
+    mode: '0755'
+
+- name: Setup the script command
+  ansible.builtin.set_fact:
+    _xray__plugin_geodata_command: "/etc/xray/plugins/xray-geodata-update.sh {{ cargs }} > {{ logfile }}"
+  vars:
+    cargs: "{{ _xray__plugins.geodata.command_args | join(' ') }}"
+    logfile: "{{ _xray__plugins.geodata.logfile }}"
+    env: "{% for k, v in _xray__plugins.geodata.command_env.items() %}{{ k }}={{ v }} {% endfor %}"
+
+- name: Exec the script command at once
+  ansible.builtin.shell: "{{ _xray__plugin_geodata_command }}"
+  async: 600  # Allowed to run up to 600s = 10min
+  poll: 5     # Check status every 5 seconds
+  environment: "{{ _xray__plugins.geodata.command_env }}"
+
+- name: Set crontab to exec the plugin command regulary.
+  vars:
+    env: "{% for k, v in _xray__plugins.geodata.command_env.items() %}{{ k }}={{ v }} {% endfor %}"
+  ansible.builtin.cron:
+    name: "{{ _xray__plugins.geodata.cron.name }}"
+    minute: "{{ _xray__plugins.geodata.cron.minute }}"
+    hour: "{{ _xray__plugins.geodata.cron.hour }}"
+    day: "{{ _xray__plugins.geodata.cron.day }}"
+    month: "{{ _xray__plugins.geodata.cron.month}}"
+    weekday: "{{ _xray__plugins.geodata.cron.weekday }}"
+    job: "{{ env }} {{ _xray__plugin_geodata_command }}"
+    state: "present"
+  notify: Restart cron

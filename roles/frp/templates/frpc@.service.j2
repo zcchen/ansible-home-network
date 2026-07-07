@@ -1,0 +1,15 @@
+[Unit]
+Description = frpc
+Documentation = https://gofrp.org/docs
+After = network.target network-online.target
+Wants = network.target network-online.target
+
+[Service]
+Type = simple
+DynamicUser=true
+ExecStart = {{ frp__client_cmd }} -c /etc/frpc/%i.toml
+Restart = always
+RestartSec = 30s
+
+[Install]
+WantedBy = multi-user.target
