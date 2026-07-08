@@ -42,6 +42,7 @@
   failed_when: _dns__openwrt_dnsmasq_section.uci.found | length > 1
 
 - name: debug show the dnsmasq section name
+  when: debug_print
   debug:
     msg: "{{ _dns__openwrt_dnsmasq_section.uci.found }}"
 
