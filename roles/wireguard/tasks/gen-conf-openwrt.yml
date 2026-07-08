@@ -165,14 +165,15 @@
       debug:
         msg: "{{ _wg__fw_forwardings | default({}) }}"
 
-- name: setup firewall.@rule[], firewall.@zone[] & firewall.@forwarding[] for extra_vlans
+- name: setup firewall.@rule[], firewall.@zone[], firewall.@forwarding[] for extra_vlans
   ansible.builtin.set_fact:
     _wg__uci_sections__fw_rule__add: "{{ sections_rule_add if cond__fw_rule_need_add else [] }}"
     _wg__uci_sections__fw_rule__mod: "{{ sections_rule_mod if not cond__fw_rule_need_add else [] }}"
     _wg__uci_sections__fw_zone__add: "{{ sections_zone_add if cond__fw_zone_need_add else [] }}"
     _wg__uci_sections__fw_zone__mod: "{{ sections_zone_mod if not cond__fw_zone_need_add else [] }}"
-    _wg__uci_sections__fw_fwd__add: "{{ sections_fwd_add if cond__fw_fwd_need_add else [] }}"
-    _wg__uci_sections__fw_fwd__mod: "{{ sections_fwd_mod if not cond__fw_fwd_need_add else [] }}"
+    _wg__uci_sections__fw_fwd__add: "{{ sections_fwd_add[len__fw_fwd__curr:] if len__fw_fwd__need > len__fw_fwd__curr else [] }}" # only the last ones needed to be added
+    _wg__uci_sections__fw_fwd__mod: "{{ sections_fwd_mod[0: len__fw_fwd__curr] }}"
+    _wg__uci_sections__fw_fwd__del: "{{ sections_fwd_del[len__fw_fwd__need:] }}"
   vars:
     sections_rule_add:
       - type: rule
@@ -203,10 +204,21 @@
         options:
           src: "wan"
           dest: "{{ wireguard__interface }}"
+      - type: "forwarding"
+        options:
+          src: "lan"
+          dest: "{{ wireguard__interface }}"
+      - type: "forwarding"
+        options:
+          src: "{{ wireguard__interface }}"
+          dest: "lan"
     sections_fwd_mod: >-
       {{ _wg__fw_forwardings | dict2items | map('json_query', '[value, {name: key}]') | map("combine")
           | zip(sections_fwd_add) | map("combine", recursive=True) | list}}
-    cond__fw_fwd_need_add: "{{ _wg__fw_forwardings | length == 0 }}"
+    sections_fwd_del: >-
+      {{ _wg__fw_forwardings | dict2items | map('json_query', '{name: key}') | list }}
+    len__fw_fwd__curr: "{{ _wg__fw_forwardings | length }}"
+    len__fw_fwd__need: "{{ sections_fwd_add | length }}"
 
 - name: debug print uci command for firewall config sections
   when: debug_print
@@ -229,6 +241,9 @@
     - name: debug print _wg__uci_sections__fw_fwd__mod
       debug:
         msg: "{{ _wg__uci_sections__fw_fwd__mod | default([]) }}"
+    - name: debug print _wg__uci_sections__fw_fwd__del
+      debug:
+        msg: "{{ _wg__uci_sections__fw_fwd__del | default([]) }}"
 
 # uci command update
 - name: uci command for network config
@@ -270,6 +285,14 @@
     - uci commit firewall
     - "Restart firewall"
   block:
+    - name: Execute the uci command for firewall config, del
+      when: sections | default([]) | length > 0
+      uci:
+        command: create
+        config: firewall
+        sections: "{{ sections }}"
+      vars:
+        sections: "{{ _wg__uci_sections__fw_fwd__del | default([]) }}"
     - name: Execute the uci command for firewall config, add
       when: sections | default([]) | length > 0
       uci:
