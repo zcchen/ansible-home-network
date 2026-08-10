@@ -4,6 +4,17 @@ balancers:
     strategy:
       type: leastPing
 rules:
+  - ip:
+      - "127.0.0.0/8"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+    inboundtag: {{ tag_in_list }}
+    outboundTag: "direct"
+  - domain:
+      - "domain:{{ my_basedomain }}"
+    inboundtag: {{ tag_in_list }}
+    outboundTag: "direct"
   - inboundTag: {{ tag_in_list }}
     balancerTag: "leastPing-proxy-balancer"
 {% for suf in tag_suf_list %}

@@ -11,12 +11,14 @@ balancers:
     strategy:
       type: leastPing
 rules:
-  - inboundTag: {{ tag_in_proxy_list + ["!cn-dns-tag"] }}
-    balancerTag: "leastPing-proxy-balancer"
   {% for suf in tag_suf_list %}
   - inboundtag: {{ tag_in_list | product([suf]) | map('join', '-') }}
     outboundtag: "{{ tag_out_base }}-{{ suf }}"
   {% endfor %}
+  - ip:
+      - "geoip:private"
+    inboundtag: {{ tag_in_proxy_list + tag_in_auto_list }}
+    outboundTag: "direct"
   - domain:
       - "domain:{{ my_basedomain }}"
       - geosite:cn
@@ -27,12 +29,20 @@ rules:
     outboundTag: "direct"
   - ip:
       - "geoip:cn"
-      - "geoip:private"
     {% for ip in ips_direct | default([]) %}
       - {{ ip }}
     {% endfor %}
     inboundtag: {{ tag_in_auto_list }}
     outboundTag: "direct"
+  - domain:
+      - "domain:{{ my_basedomain }}"
+    {% for d in domains_direct | default([]) %}
+      - {{ d }}
+    {% endfor %}
+    inboundtag: {{ tag_in_proxy_list + tag_in_auto_list }}
+    outboundTag: "direct"
+  - inboundTag: {{ tag_in_proxy_list + ["!cn-dns-tag"] }}
+    balancerTag: "leastPing-proxy-balancer"
   {% for reg in rules_region | default([]) %}
   {{ reg }}
   {% endfor %}
