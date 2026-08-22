@@ -13,6 +13,8 @@ xray:
             router.A.lan:
             router.B.lan:
         xray_linux:
+          hosts:
+            nas.A:
 
 
 xray_servers:
@@ -109,18 +111,19 @@ xray_clients:
             - domain:reddit.com
             - domain:tiktok.com
             - domain:chatgpt.com
-          inboundtag: ["{{ tag_in_auto }}", "{{ tag_in_proxy }}"]
-          outboundTag: "{{ tag_out_proxy }}-{{ __frp.vps.B.prefix }}"
+          inboundtag: |
+            {{ __xray_c__routing_autoproxy.tag_in_auto_list + __xray_c__routing_autoproxy.tag_in_proxy_list }}
+          outboundTag: "{{ __xray_c__routing_autoproxy.tag_out_base }}-{{ __frp.vps.B.prefix }}"
         - domain:
             - geosite:netflix
             - domain:reddit.com
-          inboundtag: ["{{ tag_in_auto }}", "{{ tag_in_proxy }}"]
-          outboundTag: "{{ tag_out_proxy }}-{{ __frp.vps.A.prefix }}"
+          inboundtag: |
+            {{ __xray_c__routing_autoproxy.tag_in_auto_list + __xray_c__routing_autoproxy.tag_in_proxy_list }}
+          outboundTag: "{{ __xray_c__routing_autoproxy.tag_out_base }}-{{ __frp.vps.A.prefix }}"
     _xray_c__inbounds_auto: >-
       {{ _xray_c__inbounds_allproxy +
          lookup("template", 'xray/c_inbounds.yml.j2', template_vars={"v": __xray_c__inbound_auto}) | from_yaml
       }}
-    _xray_c__outbounds_auto: "{{ _xray_c__outbounds_proxies + _xray_snippet__client_outbound_direct }}"
     _xray_c__routing_auto: >-
       {{ lookup("template", 'xray/routing_autoproxy.yml.j2', template_vars=__xray_c__routing_autoproxy) | from_yaml }}
 
