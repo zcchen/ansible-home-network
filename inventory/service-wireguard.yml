@@ -5,10 +5,12 @@ wireguard:
     wireguard_ports:
       vps.A:
       vps.B:
-    wireguard_routers:
-      router.A.pub:
-      router.B.pub:
-    wireguard_peers:
+    wireguard_lan:
+      children:
+        wireguard_routers:
+          router.A.pub:
+          router.B.pub:
+        wireguard_linux:
 
 
 wireguard_ports:
@@ -31,17 +33,7 @@ wireguard_ports:
       - iptables -D FORWARD -i %i -j ACCEPT
       - iptables -D FORWARD -o %i -j ACCEPT
 
-
-wireguard_routers:
-  hosts:
-    router.A.pub:
-      wireguard__endpoint: "{{ __ddns.router.A }}.{{ __domain_basename }}"
-      wireguard__address: "{{ __network.router.A.wireguard }}"
-      wireguard__allowed_ips: "{{ [__network.router.A.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
-    router.B.pub:
-      wireguard__endpoint: "{{ __ddns.router.B }}.{{ __domain_basename }}"
-      wireguard__address: "{{ __network.router.B.wireguard }}"
-      wireguard__allowed_ips: "{{ [__network.router.B.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
+wireguard_lan:
   vars:
     wireguard__mtu: 1412    # default IPv6 is 1420, PPPoE modifying: -8, calc: 1412
     wireguard__persistent_keepalive: 5
@@ -63,9 +55,24 @@ wireguard_routers:
           method: "vless"
           streamSettings: "{{ _xray_snippet__streamSettings_base }}"
 
-
-wireguard_peers:
+wireguard_routers:
   hosts:
+    router.A.pub:
+      wireguard__endpoint: "{{ __ddns.router.A }}.{{ __domain_basename }}"
+      wireguard__address: "{{ __network.router.A.wireguard }}"
+      wireguard__allowed_ips: "{{ [__network.router.A.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
+    router.B.pub:
+      wireguard__endpoint: "{{ __ddns.router.B }}.{{ __domain_basename }}"
+      wireguard__address: "{{ __network.router.B.wireguard }}"
+      wireguard__allowed_ips: "{{ [__network.router.B.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
+
+
+wireguard_linux:
+  hosts:
+    nas.A:
+      wireguard__address: "{{ __network.nas.A.wireguard }}"
+      # No wireguard__endpoint needed because it is inside our LAN
+      # No wireguard__allowed_ips needed because it won't forward the packets to others.
   vars:
     wireguard__ignore_peers:
       - router.A.pub

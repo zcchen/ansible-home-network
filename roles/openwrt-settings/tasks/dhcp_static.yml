@@ -16,13 +16,13 @@
   with_dict: "{{ dhcp_static_clients }}"
   ansible.builtin.set_fact:
     _openwrt__dhcp_static__options: "{{ _openwrt__dhcp_static__options | default([]) + [options] }}"
-  when: v.ip is ansible.utils.in_any_network(all_host_networks)
+  when: (v.ip | ansible.utils.ipaddr('address')) is ansible.utils.in_any_network(all_host_networks)
   vars:
     k: "{{ item.key }}"
     v: "{{ item.value }}"
     options:
       name: "{{ k }}"
-      ip: "{{ v.ip }}"
+      ip: "{{ v.ip | ansible.utils.ipaddr('address') }}"
       mac: "{{ v.mac }}"
     host_networks_template: >-
       [{% for iface in ansible_interfaces %}{% set i = iface | replace('-', '_') %}
