@@ -11,6 +11,7 @@ wireguard:
           router.A.pub:
           router.B.pub:
         wireguard_linux:
+          nas.A:
 
 
 wireguard_ports:
@@ -65,6 +66,9 @@ wireguard_routers:
       wireguard__endpoint: "{{ __ddns.router.B }}.{{ __domain_basename }}"
       wireguard__address: "{{ __network.router.B.wireguard }}"
       wireguard__allowed_ips: "{{ [__network.router.B.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
+  vars:
+    wireguard__ignore_peers:
+      - nas.A
 
 
 wireguard_linux:
