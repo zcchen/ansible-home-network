@@ -3,7 +3,7 @@
   settings:
     udp: true
     auth: noauth
-  listen: "{{ item.addr | default('127.0.0.1') }}"
+  listen: "{{ item.listen | default('127.0.0.1') }}"
   port: {{ item.port }}
   tag: "{{ item.tag.base }}{% if item.tag.suf is defined %}-{{ item.tag.suf }}{% endif %}"
 {% endfor %}

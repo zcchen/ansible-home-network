@@ -18,6 +18,11 @@ rules:
     inboundtag: {{ tag_in_proxy_list + tag_in_auto_list }}
     outboundTag: "direct"
 
+  - domain:
+      - "domain:{{ my_basedomain }}"
+    inboundtag: {{ tag_in_proxy_list + tag_in_auto_list }}
+    outboundTag: "direct"
+
 {% for suf in tag_suf_list %}
   - inboundtag: {{ tag_in_proxy_list | product([suf]) | map('join', '-') }}
     outboundtag: {{ tag_out_base }}-{{ suf }}
@@ -40,7 +45,6 @@ rules:
     outboundTag: "direct"
 
   - domain:
-      - "domain:{{ my_basedomain }}"
 {% for d in domains_direct | default([]) %}
       - {{ d }}
 {% endfor %}

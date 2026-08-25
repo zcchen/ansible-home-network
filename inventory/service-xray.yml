@@ -43,7 +43,7 @@ xray_openwrt:
     xray__configs:
       passwall:
         inbounds: "{{ _xray_c__inbounds_allproxy }}"
-        outbounds: "{{ _xray_c__outbounds_proxies + _xray_snippet__client_outbound_direct }}"
+        outbounds: "{{ _xray_snippet__client_outbound_direct + _xray_c__outbounds_proxies }}"
         routing: "{{ _xray_c__routing_allproxy }}"
 
 xray_linux:
@@ -52,7 +52,7 @@ xray_linux:
     xray__configs:
       passwall:
         inbounds: "{{ _xray_c__inbounds_auto }}"
-        outbounds: "{{ _xray_c__outbounds_proxies }}"
+        outbounds: "{{ _xray_snippet__client_outbound_direct + _xray_c__outbounds_proxies }}"
         routing: "{{ _xray_c__routing_auto }}"
 
 
@@ -75,7 +75,7 @@ xray_clients:
       - {"protocol": "socks", "port": 7071, "tag": {"base": "allpass-socks", "suf": "{{ __xray__tag_sufs[0] }}"}}
       - {"protocol": "socks", "port": 7072, "tag": {"base": "allpass-socks", "suf": "{{ __xray__tag_sufs[1] }}"}}
       - {"protocol": "http", "port": 8228, "tag": {"base": "allpass-http"}}
-      - {"protocol": "http", "port": 8228, "listen": "{{ ansible_ssh_host }}", "tag": {"base": "allpass-http-r"}}
+      - {"protocol": "http", "port": 8228, "listen": "172.17.0.1", "tag": {"base": "allpass-http-docker"}}
       - {"protocol": "http", "port": 8229, "tag": {"base": "allpass-http", "suf": "{{ __xray__tag_sufs[0] }}"}}
       - {"protocol": "http", "port": 8230, "tag": {"base": "allpass-http", "suf": "{{ __xray__tag_sufs[1] }}"}}
     _xray_c__inbounds_allproxy: >-
@@ -92,10 +92,10 @@ xray_clients:
     # auto-proxy extension related
     __xray_c__inbound_auto:
       - {"protocol": "http", "port": 8118, "tag": {"base": "autopass"}}
-      - {"protocol": "http", "port": 8118, "listen": "{{ ansible_ssh_host }}", "tag": {"base": "autopass-r"}}
+      - {"protocol": "http", "port": 8118, "listen": "172.17.0.1", "tag": {"base": "autopass-docker"}}
     __xray_c__routing_autoproxy:
-      tag_in_proxy_list: ["allpass-socks", "allpass-http"]
-      tag_in_auto_list: ["autopass", "autopass-r"]
+      tag_in_proxy_list: ["allpass"]
+      tag_in_auto_list: ["autopass"]
       tag_out_base: proxy
       tag_suf_list: "{{ __xray__tag_sufs }}"
       my_basedomain: "{{ __domain_basename }}"
