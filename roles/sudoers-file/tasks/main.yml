@@ -1,0 +1,14 @@
+---
+
+- name: update sudoers path
+  become: true
+  when:
+    - ansible_facts["os_family"] != "OpenWrt"
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    regexp: '^Defaults\s+secure_path\s*='
+    line: "Defaults	secure_path=\"{{ sudoers__paths | join(':') }}\""
+    owner: root
+    group: root
+    mode: '0440'
+    validate: '/usr/sbin/visudo -csf %s'
