@@ -13,27 +13,30 @@ balancers:
       type: leastPing
 
 rules:
+{% for suf in tag_suf_list %}
+  - inboundTag: {{ tag_in_proxy_list | product([suf]) | map('join', '-') }}
+    outboundTag: {{ tag_out_base }}-{{ suf }}
+{% endfor %}
+
   - ip:
       - geoip:private
-    inboundtag: {{ tag_in_proxy_list + tag_in_auto_list }}
+    inboundTag: {{ tag_in_proxy_list + tag_in_auto_list }}
     outboundTag: "direct"
 
   - domain:
       - "domain:{{ my_basedomain }}"
-    inboundtag: {{ tag_in_proxy_list + tag_in_auto_list }}
-    outboundTag: "direct"
-
-{% for suf in tag_suf_list %}
-  - inboundtag: {{ tag_in_proxy_list | product([suf]) | map('join', '-') }}
-    outboundtag: {{ tag_out_base }}-{{ suf }}
+{% for d in domains_direct | default([]) %}
+      - {{ d }}
 {% endfor %}
+    inboundTag: {{ tag_in_proxy_list + tag_in_auto_list }}
+    outboundTag: "direct"
 
   - domain:
       - geosite:cn
 {% for d in domains_direct | default([]) %}
       - {{ d }}
 {% endfor %}
-    inboundtag: {{ tag_in_auto_list }}
+    inboundTag: {{ tag_in_auto_list }}
     outboundTag: "direct"
 
   - ip:
@@ -44,13 +47,6 @@ rules:
     inboundtag: {{ tag_in_auto_list }}
     outboundTag: "direct"
 
-  - domain:
-{% for d in domains_direct | default([]) %}
-      - {{ d }}
-{% endfor %}
-    inboundtag: {{ tag_in_proxy_list + tag_in_auto_list }}
-    outboundTag: "direct"
-
 {% for reg in rules_region | default([]) %}
   {% filter indent(width=2) -%}{{ [reg] | to_yaml }}{%- endfilter %}
 {% endfor %}
@@ -59,6 +55,6 @@ rules:
     balancerTag: "leastPing-proxy-balancer"
 
   - domain: {{ domains_proxy | default([]) }}
-    inboundtag: {{ tag_in_auto_list }}
+    inboundTag: {{ tag_in_auto_list }}
     balancerTag: "leastPing-proxy-balancer"
 

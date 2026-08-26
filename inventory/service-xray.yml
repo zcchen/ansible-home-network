@@ -94,8 +94,8 @@ xray_clients:
       - {"protocol": "http", "port": 8118, "tag": {"base": "autopass"}}
       - {"protocol": "http", "port": 8118, "listen": "172.17.0.1", "tag": {"base": "autopass-docker"}}
     __xray_c__routing_autoproxy:
-      tag_in_proxy_list: ["allpass"]
-      tag_in_auto_list: ["autopass"]
+      tag_in_proxy_list: ["allpass-socks", "allpass-http", "allpass-http-docker"]
+      tag_in_auto_list: ["autopass", "autopass-docker"]
       tag_out_base: proxy
       tag_suf_list: "{{ __xray__tag_sufs }}"
       my_basedomain: "{{ __domain_basename }}"
@@ -111,13 +111,13 @@ xray_clients:
             - domain:reddit.com
             - domain:tiktok.com
             - domain:chatgpt.com
-          inboundtag: |
+          inboundTag: |
             {{ __xray_c__routing_autoproxy.tag_in_auto_list + __xray_c__routing_autoproxy.tag_in_proxy_list }}
           outboundTag: "{{ __xray_c__routing_autoproxy.tag_out_base }}-{{ __frp.vps.B.prefix }}"
         - domain:
             - geosite:netflix
             - domain:reddit.com
-          inboundtag: |
+          inboundTag: |
             {{ __xray_c__routing_autoproxy.tag_in_auto_list + __xray_c__routing_autoproxy.tag_in_proxy_list }}
           outboundTag: "{{ __xray_c__routing_autoproxy.tag_out_base }}-{{ __frp.vps.A.prefix }}"
     _xray_c__inbounds_auto: >-
