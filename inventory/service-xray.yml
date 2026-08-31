@@ -14,7 +14,8 @@ xray:
             router.B.lan:
         xray_linux:
           hosts:
-            nas.A:
+            nas.production:
+            nas.testing:
 
 
 xray_servers:

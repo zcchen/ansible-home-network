@@ -2,4 +2,6 @@
 
 dependencies:
   - role: sudoers-file
+    when:
+      - ansible_facts["os_family"] != "OpenWrt"
 

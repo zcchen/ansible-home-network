@@ -11,7 +11,8 @@ wireguard:
           router.A.pub:
           router.B.pub:
         wireguard_linux:
-          nas.A:
+          nas.production:
+          nas.testing:
 
 
 wireguard_ports:
@@ -68,13 +69,16 @@ wireguard_routers:
       wireguard__allowed_ips: "{{ [__network.router.B.baseAddr | ansible.utils.ipaddr('network/prefix')] }}"
   vars:
     wireguard__ignore_peers:
-      - nas.A
+      - nas.production
+      - nas.testing
 
 
 wireguard_linux:
   hosts:
-    nas.A:
-      wireguard__address: "{{ __network.nas.A.wireguard }}"
+    nas.production:
+      wireguard__address: "{{ __network.nas.production.wireguard }}"
+    nas.testing:
+      wireguard__address: "{{ __network.nas.testing.wireguard }}"
       # No wireguard__endpoint needed because it is inside our LAN
       # No wireguard__allowed_ips needed because it won't forward the packets to others.
   vars:

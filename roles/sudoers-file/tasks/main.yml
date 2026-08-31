@@ -12,3 +12,8 @@
     group: root
     mode: '0440'
     validate: '/usr/sbin/visudo -csf %s'
+  notify:
+    - Reset connection
+
+- name: Flush handlers immediately for sudoers-file task
+  ansible.builtin.meta: flush_handlers

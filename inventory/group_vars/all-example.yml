@@ -31,9 +31,12 @@ __network:
       baseAddr: "vpsB.port.{{ __domain_basename }}"
       wireguard: 172.16.0.11/24
   nas:
-    A:
+    production:
       baseAddr: 192.168.5.100/24
       wireguard: 172.16.0.100/24
+    testing:
+      baseAddr: 192.168.5.101/24
+      wireguard: 172.16.0.101/24
 
 __ddns:
   router:
@@ -93,6 +96,7 @@ __dns__configs:
       # disable all ipv6 return, except the ddns ones, which will query from upstream
       - "address=/{{ __domain_basename }}/::"
       - "server=/ddns.{{ __domain_basename }}/#"
+      - "address=/nas.{{ __domain_basename }}/{{ __network.nas.production.baseAddr | ansible.utils.ipaddr('address') }}"
     docker.conf:
       - "server=/docker.{{ __domain_basename }}/{{ __network.vps.A.wireguard | ansible.utils.ipaddr('address') }}"
       - "server=/docker.{{ __domain_basename }}/{{ __network.vps.B.wireguard | ansible.utils.ipaddr('address') }}"
@@ -100,6 +104,7 @@ __dns__configs:
     localhost.conf:
       # for frp services
       - address=/.localhost/127.0.0.1
+      - "address=/nas.{{ __domain_basename }}/{{ __network.nas.production.wireguard | ansible.utils.ipaddr('address') }}"
     docker.conf:
       - "address=/docker.{{ __domain_basename }}/{{ ansible_wg0.ipv4.address }}"
       - "address=/docker.{{ __domain_basename }}/::"
