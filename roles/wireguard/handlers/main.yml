@@ -15,6 +15,7 @@
 - name: Restart wireguard (linux)
   ansible.builtin.service:
     name: "wg-quick@{{ wireguard__interface }}"
+    enabled: "yes"
     state: "restarted"
   when: ansible_facts['os_family'] != 'OpenWrt'
   listen: "Restart wireguard"
