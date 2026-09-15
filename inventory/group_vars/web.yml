@@ -59,8 +59,8 @@ nginx__http_site_files:
       {{ __snippet_nginx__base | indent(width=2) }}
 
       server_name ~^(?<sub>.+)\.(?<port>.+)\.frp\.{{ __domain_basename | replace('.', '\.') }}$;
-      ssl_certificate /etc/letsencrypt/live/{{ __domain_basename }}/fullchain.pem;
-      ssl_certificate_key  /etc/letsencrypt/live/{{ __domain_basename }}/privkey.pem;
+      ssl_certificate /etc/letsencrypt/live/frp.{{ __domain_basename }}/fullchain.pem;
+      ssl_certificate_key  /etc/letsencrypt/live/frp.{{ __domain_basename }}/privkey.pem;
 
       location / {
         resolver 127.0.0.1 ipv6=off;
@@ -75,6 +75,26 @@ nginx__http_site_files:
           break ;
         }
         proxy_pass https://$sub.localhost:7000;
+      }
+    }
+
+  basedomain-nas-https: |
+    server {
+      {{ __snippet_nginx__base | indent(width=2) }}
+
+      server_name nas.{{ __domain_basename }} *.nas.{{ __domain_basename }};
+      ssl_certificate /etc/letsencrypt/live/nas.{{ __domain_basename }}/fullchain.pem;
+      ssl_certificate_key  /etc/letsencrypt/live/nas.{{ __domain_basename }}/privkey.pem;
+
+      location / {
+        resolver 127.0.0.1 ipv6=off;
+        proxy_cache off;
+        proxy_ssl_verify off;
+        proxy_ssl_server_name on;
+        proxy_ssl_protocols TLSv1.3 TLSv1.2 TLSv1.1 TLSv1;
+        {{ _snippet_nginx__rev_proxy_header | indent(width=4) }}
+
+        proxy_pass https://$host$request_uri;
       }
     }
 

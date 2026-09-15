@@ -9,17 +9,27 @@ web:
       __extra_domains:
         - "*.{{ __frp.vps.B.prefix }}.frp.{{ __domain_basename }}"
   vars:
-    __certbot_domains:
+    __certbot_domains__base:
       - "{{ __domain_basename }}"         # basic domain
       - "*.{{ __domain_basename }}"       # basic sub-domain
       # port sub-domain
       - "*.port.{{ __domain_basename }}"
-      - "*.frp.{{ __domain_basename }}"
+      # - "*.frp.{{ __domain_basename }}"
       # docker sub-domain
       - "*.docker.{{ __domain_basename }}"
+    __certbot_domains__frp:
+      - "frp.{{ __domain_basename }}"
+      - "*.frp.{{ __domain_basename }}"
+    __certbot_domains__nas:
+      - "nas.{{ __domain_basename }}"
+      - "*.nas.{{ __domain_basename }}"
     certbot__domains:
       - name: "{{ __domain_basename }}"
-        domains: "{{ __certbot_domains + __extra_domains | default([]) }}"
+        domains: "{{ __certbot_domains__base }}"
+      - name: "frp.{{ __domain_basename }}"
+        domains: "{{ __certbot_domains__frp + __extra_domains | default([]) }}"
+      - name: "nas.{{ __domain_basename }}"
+        domains: "{{ __certbot_domains__nas }}"
     certbot__dns_plugin: "{{ __certbot__dns_plugin }}"
     certbot__dns_api_token: "{{ __certbot__dns_api_token }}"
 

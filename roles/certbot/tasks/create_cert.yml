@@ -1,6 +1,6 @@
 ---
 
-- name: Check if certificate already exists, if no, create it later.
+- name: "Check if certificate <{{ cert_item.name }}> already exists, if no, create it later."
   ansible.builtin.stat:
     path: /etc/letsencrypt/live/{{ cert_item.name }}/cert.pem
   register: letsencrypt_cert
@@ -19,7 +19,7 @@
       when:
         - letsencrypt_cert.stat.exists
 
-- name: Check if domains have changed
+- name: "Check if domains in cert <{{ cert_item.name }}> have changed"
   when:
     - letsencrypt_cert.stat.exists
     - not certbot__del_before_cert
